@@ -13,7 +13,8 @@ RUN apt-get update && \
 
 # Download, verify, and extract ninja
 RUN wget -q https://github.com/ninja-build/ninja/releases/download/v${NINJA_VERSION}/ninja-linux.zip && \
-    NINJA_SHA256=$(curl -s https://api.github.com/repos/ninja-build/ninja/releases/tags/v${NINJA_VERSION} | jq -r '.assets[] | select(.name=="ninja-linux.zip") | .digest' | cut -d: -f2) && \
+    NINJA_SHA256=$(curl -s https://api.github.com/repos/ninja-build/ninja/releases/tags/v${NINJA_VERSION} | \
+        jq -r '.assets[] | select(.name=="ninja-linux.zip") | .digest' | cut -d: -f2) && \
     echo "${NINJA_SHA256}  ninja-linux.zip" | sha256sum --check && \
     mkdir -p /opt/ninja && \
     unzip -q ninja-linux.zip -d /opt/ninja && \
@@ -21,11 +22,12 @@ RUN wget -q https://github.com/ninja-build/ninja/releases/download/v${NINJA_VERS
 
 # Download, verify, and extract CMake
 RUN wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz && \
-    wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-SHA-256.txt && \
-    grep "cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" cmake-${CMAKE_VERSION}-SHA-256.txt | sha256sum --check && \
+    CMAKE_SHA256=$(curl -s https://api.github.com/repos/Kitware/CMake/releases/tags/v${CMAKE_VERSION} | \
+        jq -r '.assets[] | select(.name=="cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz") | .digest' | cut -d: -f2) && \
+    echo "${CMAKE_SHA256}  cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" | sha256sum --check && \
     mkdir -p /opt/cmake && \
     tar -xzf cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz -C /opt/cmake --strip-components=1 && \
-    rm cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz cmake-${CMAKE_VERSION}-SHA-256.txt
+    rm cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz
 
 # Download, verify, and extract ARM toolchain
 RUN wget -q https://developer.arm.com/-/media/Files/downloads/gnu/&{ARM_NONE_EABI_GCC_VERSION}/binrel/arm-gnu-toolchain-&{ARM_NONE_EABI_GCC_VERSION}-x86_64-arm-none-eabi.tar.xz && \
