@@ -1,0 +1,29 @@
+version: 2
+updates:
+    # Maintain dependencies for GitHub Actions
+    - package-ecosystem: "github-actions"
+      directory: "/"
+      schedule:
+        interval: "weekly"
+        day: "monday"
+        time: "03:00"
+      labels:
+        - "dependencies"
+        - "github-actions"
+      commit-message:
+        prefix: "ci"
+        include: "scope"
+
+    # Maintain dependencies for Docker
+    - package-ecosystem: "docker"
+      directory: "/"
+      schedule:
+        interval: "weekly"
+        day: "monday"
+        time: "03:00"
+      labels:
+        - "dependencies"
+        - "docker"
+      commit-message:
+        prefix: "docker"
+        include: "scope"
