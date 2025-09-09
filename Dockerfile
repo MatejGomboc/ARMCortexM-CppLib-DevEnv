@@ -4,7 +4,7 @@ FROM debian:13-slim AS downloader
 WORKDIR /root
 
 RUN apt-get update && \
-    apt-get install -y wget curl jq unzip tar xz-utils && \
+    apt-get install -y wget unzip tar xz-utils && \
     wget -q https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-linux.zip && \
     echo "0830252db77884957a1a4b87b05a1e2d9b5f658b8367f82999a941884cbe0238  ninja-linux.zip" | sha256sum --check && \
     unzip -q ninja-linux.zip -d /usr/local/bin && \
@@ -39,14 +39,9 @@ RUN apt-get update && \
     apt-get install -y llvm-19-tools && \
     rm -rf /var/lib/apt/lists/* && \
     ln -s /usr/bin/FileCheck-19 /usr/bin/FileCheck && \
-    ln -s /usr/bin/FileCheck-19 /usr/bin/filecheck
-
-# # Add health check script
-# COPY healthcheck.sh /usr/local/bin/healthcheck.sh
-# RUN chmod +x /usr/local/bin/healthcheck.sh
-
-# Health check
-# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 CMD ["/usr/local/bin/healthcheck.sh"]
-
-# Default command
-CMD ["/bin/bash"]
+    ln -s /usr/bin/FileCheck-19 /usr/bin/filecheck && \
+    ninja --version && \
+    cmake --version && \
+    arm-none-eabi-gcc --version && \
+    filecheck --version && \
+    FileCheck --version
