@@ -25,11 +25,6 @@ WORKDIR /root
 
 ENV PATH="/opt/arm-none-eabi-gcc/bin:/opt/cmake/bin:${PATH}"
 
-# Labels for GitHub Container Registry
-LABEL org.opencontainers.image.source="https://github.com/MatejGomboc/ARMCortexM-CppLib-DevEnv"
-LABEL org.opencontainers.image.description="Development environment for ARMCortexM-CppLib"
-LABEL org.opencontainers.image.licenses="ApacheV2.0"
-
 # Copy the extracted tools directly to their final locations
 COPY --from=downloader /usr/local/bin/ninja /usr/local/bin/
 COPY --from=downloader /opt/cmake/ /opt/cmake/
@@ -45,3 +40,5 @@ RUN apt-get update && \
     arm-none-eabi-gcc --version && \
     filecheck --version && \
     FileCheck --version
+
+ENTRYPOINT ["/bin/bash"]
