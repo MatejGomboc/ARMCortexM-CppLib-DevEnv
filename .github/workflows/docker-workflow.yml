@@ -9,8 +9,8 @@ on:
         - main
     workflow_dispatch:
     schedule:
-        # Weekly build to ensure the image stays fresh with security updates
-        - cron: '0 3 * * 1'
+        # Daily re-build to ensure the image stays fresh with security updates
+        - cron: '0 0 * * *'
 
 env:
     REGISTRY: ghcr.io
