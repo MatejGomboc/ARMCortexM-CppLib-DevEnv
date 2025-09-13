@@ -32,8 +32,7 @@ COPY --from=downloader /opt/arm-none-eabi-gcc/ /opt/arm-none-eabi-gcc/
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# hadolint ignore=DL3008
-# hadolint ignore=DL3015
+# hadolint ignore=DL3008,DL3015
 RUN apt-get update && \
     apt-get install -y llvm-19-tools && \
     rm -rf /var/lib/apt/lists/* && \
