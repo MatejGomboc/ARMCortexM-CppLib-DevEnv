@@ -60,11 +60,11 @@ Add to your `.devcontainer/devcontainer.json`:
 - **Build System**
   - Ninja Build v1.13.1
   - CMake v4.1.1
-  
+
 - **ARM Toolchain**
   - ARM GNU Toolchain 14.3.rel1
   - Full arm-none-eabi-* suite
-  
+
 - **Testing Tools**
   - LLVM 19 FileCheck
 
@@ -76,17 +76,8 @@ If you prefer to build the image locally:
 docker build -t armcortexm-dev .
 ```
 
-### CI/CD
-
-This image is automatically built and published to GitHub Container Registry on every push to the main branch. The build process includes:
-
-- Multi-platform support (linux/amd64, linux/arm64)
-- Build caching for faster rebuilds
-- Artifact attestation for supply chain security
-- Weekly rebuilds to include security updates
-
 ## Licence
 
 This project is licensed under the Apache Licence Version 2.0.  
 Copyright (C) 2025 Matej Gomboc <https://github.com/MatejGomboc/ARMCortexM-CppLib-DevEnv>.  
-See the attached [LICENCE](./LICENCE) file for more info.  
+See the attached [LICENCE](./LICENCE) file for more info.
