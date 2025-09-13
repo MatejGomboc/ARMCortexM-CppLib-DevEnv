@@ -38,4 +38,4 @@ RUN apt-get update && \
     filecheck --version && \
     FileCheck --version
 
-ENTRYPOINT ["/bin/bash"]
+CMD ["/bin/bash"]
