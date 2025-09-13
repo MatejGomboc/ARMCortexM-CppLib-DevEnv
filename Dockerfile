@@ -2,7 +2,8 @@ FROM debian:13-slim AS downloader
 
 WORKDIR /root
 
-RUN apt-get update && \
+RUN set -o pipefail && \
+    apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates wget unzip tar xz-utils && \
     wget -q https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-linux.zip && \
     echo "0830252db77884957a1a4b87b05a1e2d9b5f658b8367f82999a941884cbe0238  ninja-linux.zip" | sha256sum --check && \
@@ -27,7 +28,8 @@ COPY --from=downloader /usr/local/bin/ninja /usr/local/bin/
 COPY --from=downloader /opt/cmake/ /opt/cmake/
 COPY --from=downloader /opt/arm-none-eabi-gcc/ /opt/arm-none-eabi-gcc/
 
-RUN apt-get update && \
+RUN set -o pipefail && \
+    apt-get update && \
     apt-get install -y llvm-19-tools && \
     rm -rf /var/lib/apt/lists/* && \
     ln -s /usr/bin/FileCheck-19 /usr/bin/FileCheck && \
