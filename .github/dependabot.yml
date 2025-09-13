@@ -5,8 +5,8 @@ updates:
       directory: "/"
       schedule:
         interval: "weekly"
-        day: "monday"
-        time: "03:00"
+        day: "saturday"
+        time: "00:00"
       labels:
         - "dependencies"
         - "github-actions"
@@ -19,8 +19,8 @@ updates:
       directory: "/"
       schedule:
         interval: "weekly"
-        day: "monday"
-        time: "03:00"
+        day: "saturday"
+        time: "00:00"
       labels:
         - "dependencies"
         - "docker"
