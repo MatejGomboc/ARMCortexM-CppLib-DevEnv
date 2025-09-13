@@ -1,0 +1,11 @@
+{
+    "recommendations": [
+        "davidanson.vscode-markdownlint",
+        "donjayamanne.githistory",
+        "editorconfig.editorconfig",
+        "felipecaputo.git-project-manager",
+        "github.vscode-github-actions",
+        "ms-vscode.notepadplusplus-keybindings",
+        "redhat.vscode-yaml"
+    ]
+}
