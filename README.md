@@ -58,15 +58,14 @@ Add to your `.devcontainer/devcontainer.json`:
 ### Included Tools
 
 - **Build System**
-  - Ninja Build v1.13.1
-  - CMake v4.1.1
+  - Ninja Build
+  - CMake
 
 - **ARM Toolchain**
-  - ARM GNU Toolchain 14.3.rel1
-  - Full arm-none-eabi-* suite
+  - ARM GNU Toolchain with complete arm-none-eabi-* suite
 
 - **Testing Tools**
-  - LLVM 19 FileCheck
+  - LLVM FileCheck
 
 ### Building Locally
 
