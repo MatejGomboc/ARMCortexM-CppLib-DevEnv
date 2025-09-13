@@ -1,4 +1,3 @@
-# STAGE 1: Download, verify, and extract
 FROM debian:13-slim AS downloader
 
 WORKDIR /root
@@ -18,14 +17,12 @@ RUN apt-get update && \
     mkdir -p /opt/arm-none-eabi-gcc && \
     tar -xf arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi.tar.xz -C /opt/arm-none-eabi-gcc --strip-components=1
 
-# STAGE 2: Final minimal image
 FROM debian:13-slim
 
 WORKDIR /root
 
 ENV PATH="/opt/arm-none-eabi-gcc/bin:/opt/cmake/bin:${PATH}"
 
-# Copy the extracted tools directly to their final locations
 COPY --from=downloader /usr/local/bin/ninja /usr/local/bin/
 COPY --from=downloader /opt/cmake/ /opt/cmake/
 COPY --from=downloader /opt/arm-none-eabi-gcc/ /opt/arm-none-eabi-gcc/
