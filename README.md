@@ -62,7 +62,7 @@ Add to your `.devcontainer/devcontainer.json`:
   - CMake
 
 - **ARM Toolchain**
-  - ARM GNU Toolchain with complete arm-none-eabi-* suite
+  - complete arm-none-eabi-* suite
 
 - **Testing Tools**
   - LLVM FileCheck
