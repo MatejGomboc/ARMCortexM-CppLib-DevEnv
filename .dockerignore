@@ -4,8 +4,7 @@
 .gitattributes
 
 # GitHub files
-.github/
-!.github/workflows/
+.github
 
 # Documentation
 README.md
@@ -13,4 +12,3 @@ LICENCE
 
 # Editor configs
 .editorconfig
-.vscode/
