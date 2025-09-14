@@ -1,5 +1,7 @@
 FROM debian:13-slim AS downloader
 
+LABEL maintainer="https://github.com/MatejGomboc"
+
 WORKDIR /root
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -32,9 +34,9 @@ COPY --from=downloader /opt/arm-none-eabi-gcc/ /opt/arm-none-eabi-gcc/
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# hadolint ignore=DL3008,DL3015
+# hadolint ignore=DL3008
 RUN apt-get update && \
-    apt-get install -y llvm-19-tools && \
+    apt-get install -y --no-install-recommends llvm-19-tools && \
     rm -rf /var/lib/apt/lists/* && \
     ln -s /usr/bin/FileCheck-19 /usr/bin/FileCheck && \
     ln -s /usr/bin/FileCheck-19 /usr/bin/filecheck && \

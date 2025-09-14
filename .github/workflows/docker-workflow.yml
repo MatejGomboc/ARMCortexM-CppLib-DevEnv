@@ -67,9 +67,9 @@ jobs:
                     org.opencontainers.image.title=ARMCortexM-CppLib Development Environment
                     org.opencontainers.image.source=https://github.com/MatejGomboc/ARMCortexM-CppLib-DevEnv
                     org.opencontainers.image.description=Development environment for ARMCortexM-CppLib
-                    org.opencontainers.image.vendor=MatejGomboc
+                    org.opencontainers.image.vendor=https://github.com/MatejGomboc
                     org.opencontainers.image.licenses=Apache-2.0
-                    org.opencontainers.image.authors=MatejGomboc <https://github.com/MatejGomboc>
+                    org.opencontainers.image.authors=Matej Gomboc
 
             - name: Build and push Docker image
               id: build
