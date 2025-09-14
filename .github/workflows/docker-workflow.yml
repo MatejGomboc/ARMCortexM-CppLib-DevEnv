@@ -55,8 +55,8 @@ jobs:
                     type=raw,value=latest,enable={{is_default_branch}}
                     # Set edge tag for main branch
                     type=edge,branch=main
-                    # Git short SHA
-                    type=sha,prefix={{branch}}-
+                    # Git short SHA (no prefix)
+                    type=sha
                     # Date-based tag
                     type=schedule,pattern={{date 'YYYYMMDD'}}
                     # Semantic versioning (if using tags)
