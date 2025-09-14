@@ -1,6 +1,7 @@
 FROM debian:13-slim AS downloader
 
-LABEL maintainer="https://github.com/MatejGomboc"
+# hadolint ignore=DL3002
+USER root:root
 
 WORKDIR /root
 
@@ -23,6 +24,16 @@ RUN apt-get update && \
     tar -xf arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi.tar.xz -C /opt/arm-none-eabi-gcc --strip-components=1
 
 FROM debian:13-slim
+
+LABEL org.opencontainers.image.title="ARMCortexM-CppLib Development Environment" \
+    org.opencontainers.image.description="Development environment for ARMCortexM-CppLib" \
+    org.opencontainers.image.authors="Matej Gomboc" \
+    org.opencontainers.image.source="https://github.com/MatejGomboc/ARMCortexM-CppLib-DevEnv" \
+    org.opencontainers.image.vendor="https://github.com/MatejGomboc" \
+    org.opencontainers.image.licenses="Apache-2.0"
+
+# hadolint ignore=DL3002
+USER root:root
 
 WORKDIR /root
 
