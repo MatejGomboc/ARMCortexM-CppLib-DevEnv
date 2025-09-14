@@ -1,5 +1,6 @@
 FROM debian:13-slim AS downloader
 
+# hadolint ignore=DL3002
 USER root:root
 
 WORKDIR /root
@@ -31,6 +32,7 @@ LABEL org.opencontainers.image.title="ARMCortexM-CppLib Development Environment"
     org.opencontainers.image.vendor="https://github.com/MatejGomboc" \
     org.opencontainers.image.licenses="Apache-2.0"
 
+# hadolint ignore=DL3002
 USER root:root
 
 WORKDIR /root
