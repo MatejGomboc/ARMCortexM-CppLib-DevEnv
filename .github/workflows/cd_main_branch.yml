@@ -1,24 +1,20 @@
-name: Build and Push Docker Image
+name: Continuous Deployment Of Main Branch
 
 on:
     push:
-      branches:
-        - main
-    pull_request:
-      branches:
-        - main
-    workflow_dispatch:
+        branches: [main] # Run only on main branch push event.
+    workflow_dispatch: # Manual trigger option.
     schedule:
-        # Weekly re-build to ensure the image stays fresh with security updates
-        - cron: '0 0 * * 6'
+        - cron: '0 0 * * 6' # Automatic trigger on every Saturday 00:00 AM UTC.
 
 env:
     REGISTRY: ghcr.io
     IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-    build-and-push:
+    deploy_main_branch:
         runs-on: ubuntu-latest
+
         permissions:
             contents: read
             packages: write
@@ -29,16 +25,15 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v5
 
-            - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v3
-
             - name: Lint Dockerfile
               uses: hadolint/hadolint-action@v3.2.0
               with:
                 dockerfile: Dockerfile
 
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
             - name: Log in to GitHub Container Registry
-              if: github.event_name != 'pull_request'
               uses: docker/login-action@v3
               with:
                 registry: ${{ env.REGISTRY }}
@@ -51,18 +46,8 @@ jobs:
               with:
                 images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
                 tags: |
-                    # Set latest tag for main branch
-                    type=raw,value=latest,enable={{is_default_branch}}
-                    # Set edge tag for main branch
-                    type=edge,branch=main
-                    # Git short SHA (no prefix)
-                    type=sha
-                    # Date-based tag
-                    type=schedule,pattern={{date 'YYYYMMDD'}}
-                    # Semantic versioning (if using tags)
-                    type=semver,pattern={{version}}
-                    type=semver,pattern={{major}}.{{minor}}
-                    type=semver,pattern={{major}}
+                    # Always set 'latest' tag (this workflow only runs from main)
+                    type=raw,value=latest
 
             - name: Build and push Docker image
               id: build
@@ -70,14 +55,13 @@ jobs:
               with:
                 context: .
                 platforms: linux/amd64
-                push: ${{ github.event_name != 'pull_request' }}
+                push: true
                 tags: ${{ steps.meta.outputs.tags }}
                 labels: ${{ steps.meta.outputs.labels }}
                 cache-from: type=gha
                 cache-to: type=gha,mode=max
 
             - name: Generate artifact attestation
-              if: github.event_name != 'pull_request'
               uses: actions/attest-build-provenance@v3
               with:
                 subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}

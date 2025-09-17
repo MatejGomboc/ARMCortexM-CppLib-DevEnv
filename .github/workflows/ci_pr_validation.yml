@@ -1,0 +1,33 @@
+name: CI - PR Validation
+
+on:
+    pull_request:
+        branches: ["**"] # Run PR validation on any branch.
+
+    workflow_dispatch: # Manual trigger option.
+
+jobs:
+    verify_pr:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v5
+
+            - name: Lint Dockerfile
+              uses: hadolint/hadolint-action@v3.2.0
+              with:
+                dockerfile: Dockerfile
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Build Docker image (no push, just build)
+              uses: docker/build-push-action@v6
+              with:
+                context: .
+                platforms: linux/amd64
+                push: false # Never push during PR validation.
+                tags: ci-pr-validation:${{ github.event.pull_request.number || github.run_number }}
+                cache-from: type=gha
+                cache-to: type=gha,mode=max
