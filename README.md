@@ -51,9 +51,6 @@ Add to your `.devcontainer/devcontainer.json`:
 ### Available Tags
 
 - `latest` - Latest stable build from main branch
-- `edge` - Latest development build
-- `main-<sha>` - Specific commit builds
-- `YYYYMMDD` - Date-based tags for reproducibility
 
 ### Included Tools
 
