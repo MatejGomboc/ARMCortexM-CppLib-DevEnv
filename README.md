@@ -72,7 +72,7 @@ Add to your `.devcontainer/devcontainer.json`:
 If you prefer to build the image locally:
 
 ```bash
-docker build -t armcortexm-dev .
+docker build -t armcortexm-cppLib-devenv .
 ```
 
 ## Licence
