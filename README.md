@@ -52,7 +52,7 @@ Add to your `.devcontainer/devcontainer.json`:
 
 - `latest` - Latest stable build from main branch. It's updated during each merge into main and also weekly through a cron job (every Saturday at 00:00 AM UTC).
 - `1.2.3` - Build from a release tag with an exact version (immutable) each time such kind of a tag is created.
-- `1.2` - Latest patch version of the 1.2.x series (updated each time a new 1.2.x is created).
+- `1.2` - Latest version of the 1.2.x series (updated each time a new 1.2.x is created).
 - `1` - Latest version of the 1.x.x series (updated each time a new 1.x.x is created).
 
 ### Included Tools
