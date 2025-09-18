@@ -50,7 +50,8 @@ Add to your `.devcontainer/devcontainer.json`:
 
 ### Available Tags
 
-- `latest` - Latest stable build from main branch
+- `latest` - Latest stable build from main branch.
+- `v*.*.*` - Build of a relase tag (where '*' are non-negative integers).
 
 ### Included Tools
 
