@@ -100,33 +100,46 @@ jobs:
                     const packageName = context.repo.repo.toLowerCase();
                     const username = context.repo.owner;
                     
-                    // Get all versions of the package
-                    const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
-                        package_type: 'container',
-                        package_name: packageName,
-                        username: username,
-                        per_page: 100,
-                        page: 1
-                    });
-                    
-                    // Filter untagged versions (images without tags)
-                    const untaggedVersions = versions.data.filter(version => {
-                        return version.metadata.container.tags.length === 0;
-                    });
-                    
-                    console.log(`Found ${untaggedVersions.length} untagged versions`);
-                    
-                    // Delete old untagged versions (keep last 5 for safety)
-                    const toDelete = untaggedVersions.slice(5);
-                    
-                    for (const version of toDelete) {
-                        console.log(`Deleting version ${version.id} (created: ${version.created_at})`);
-                        await github.rest.packages.deletePackageVersionForUser({
+                    try {
+                        // Get all versions of the package
+                        const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
                             package_type: 'container',
                             package_name: packageName,
                             username: username,
-                            package_version_id: version.id
+                            per_page: 100,
+                            page: 1
                         });
+                        
+                        // Filter untagged versions (images without tags)
+                        const untaggedVersions = versions.data.filter(version => {
+                            return version.metadata.container.tags.length === 0;
+                        });
+                        
+                        console.log(`Found ${untaggedVersions.length} untagged versions`);
+                        
+                        if (untaggedVersions.length <= 5) {
+                            console.log('5 or fewer untagged versions, nothing to delete');
+                            return;
+                        }
+                        
+                        // Sort by creation date (newest first)
+                        untaggedVersions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                        
+                        // Keep the 5 newest, delete the rest
+                        const toDelete = untaggedVersions.slice(5);
+                        
+                        for (const version of toDelete) {
+                            console.log(`Deleting version ${version.id} (created: ${version.created_at})`);
+                            await github.rest.packages.deletePackageVersionForUser({
+                                package_type: 'container',
+                                package_name: packageName,
+                                username: username,
+                                package_version_id: version.id
+                            });
+                        }
+                        
+                        console.log(`Deleted ${toDelete.length} old untagged versions`);
+                    } catch (error) {
+                        console.log(`Cleanup failed: ${error.message}`);
+                        // Don't fail the workflow if cleanup fails
                     }
-                    
-                    console.log(`Deleted ${toDelete.length} old untagged versions`);
