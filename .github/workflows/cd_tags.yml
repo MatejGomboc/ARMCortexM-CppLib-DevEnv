@@ -20,7 +20,7 @@ jobs:
             security-events: write
 
         steps:
-            - name: Validate tag's name format (strict)
+            - name: Validate tag's name format
               run: |
                 TAG="${{ github.ref_name }}"
                 
