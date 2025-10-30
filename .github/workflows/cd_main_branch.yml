@@ -79,13 +79,6 @@ jobs:
               with:
                 sarif_file: 'trivy-results.sarif'
 
-            - name: Run Trivy vulnerability scanner (table output)
-              uses: aquasecurity/trivy-action@0.28.0
-              with:
-                image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-                format: 'table'
-                severity: 'CRITICAL,HIGH'
-
             - name: Sign the container image with cosign
               env:
                 DIGEST: ${{ steps.build.outputs.digest }}
@@ -105,13 +98,13 @@ jobs:
               with:
                 script: |
                     const packageName = context.repo.repo.toLowerCase();
-                    const org = context.repo.owner;
+                    const username = context.repo.owner;
                     
                     // Get all versions of the package
-                    const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByOrg({
+                    const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
                         package_type: 'container',
                         package_name: packageName,
-                        org: org,
+                        username: username,
                         per_page: 100,
                         page: 1
                     });
@@ -128,10 +121,10 @@ jobs:
                     
                     for (const version of toDelete) {
                         console.log(`Deleting version ${version.id} (created: ${version.created_at})`);
-                        await github.rest.packages.deletePackageVersionForOrg({
+                        await github.rest.packages.deletePackageVersionForUser({
                             package_type: 'container',
                             package_name: packageName,
-                            org: org,
+                            username: username,
                             package_version_id: version.id
                         });
                     }
