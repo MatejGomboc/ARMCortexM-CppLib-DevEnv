@@ -115,13 +115,6 @@ jobs:
               with:
                 sarif_file: 'trivy-results.sarif'
 
-            - name: Run Trivy vulnerability scanner (table output)
-              uses: aquasecurity/trivy-action@0.28.0
-              with:
-                image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
-                format: 'table'
-                severity: 'CRITICAL,HIGH'
-
             - name: Sign the container images with cosign
               env:
                 DIGEST: ${{ steps.build.outputs.digest }}
