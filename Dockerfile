@@ -48,6 +48,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # hadolint ignore=DL3008
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates git llvm-19-tools && \
+    apt-get upgrade -y && \
     rm -rf /var/lib/apt/lists/* && \
     ln -s /usr/bin/FileCheck-19 /usr/bin/FileCheck && \
     ln -s /usr/bin/FileCheck-19 /usr/bin/filecheck && \
