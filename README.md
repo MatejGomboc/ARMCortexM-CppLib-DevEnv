@@ -55,6 +55,36 @@ Add to your `.devcontainer/devcontainer.json`:
 - `1.2` - Latest version of the 1.2.x series (updated each time a new 1.2.x is created).
 - `1` - Latest version of the 1.x.x series (updated each time a new 1.x.x is created).
 
+### Security Features
+
+All published images include:
+
+- **Vulnerability Scanning**: Automatically scanned with [Trivy](https://trivy.dev/) for HIGH and CRITICAL vulnerabilities
+- **Image Signing**: Signed with [cosign](https://github.com/sigstore/cosign) using keyless signing via Sigstore
+- **Supply Chain Security**: Build provenance attestations attached to all images
+- **Security Reporting**: Vulnerability scan results uploaded to GitHub Security tab
+
+#### Verifying Image Signatures
+
+To verify the signature of a pulled image:
+
+```bash
+cosign verify \
+  --certificate-identity-regexp="https://github.com/MatejGomboc/ARMCortexM-CppLib-DevEnv" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  ghcr.io/matejgomboc/armcortexm-cpplib-devenv:latest
+```
+
+#### Verifying Build Provenance
+
+To inspect the build provenance attestation:
+
+```bash
+gh attestation verify \
+  oci://ghcr.io/matejgomboc/armcortexm-cpplib-devenv:latest \
+  --owner MatejGomboc
+```
+
 ### Included Tools
 
 - **Build System**
