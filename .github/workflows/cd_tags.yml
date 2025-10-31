@@ -23,7 +23,7 @@ jobs:
             - name: Validate tag's name format
               run: |
                 TAG="${{ github.ref_name }}"
-                
+
                 # Strict validation: must be v{major}.{minor}.{patch} where all are non-negative integers
                 if [[ ! "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
                     echo "❌ Error: Tag '$TAG' does not match required format 'v{major}.{minor}.{patch}'"
@@ -38,12 +38,12 @@ jobs:
                     echo "❌ Invalid examples: V1.0.0, v1.0, v1.0.0-alpha, v01.0.0, v1.0.0+build"
                     exit 1
                 fi
-                
+
                 # Extract version components
                 MAJOR="${BASH_REMATCH[1]}"
                 MINOR="${BASH_REMATCH[2]}"
                 PATCH="${BASH_REMATCH[3]}"
-                
+
                 # Check for leading zeros (except for '0' itself)
                 if [[ "$MAJOR" =~ ^0[0-9]+ ]] || [[ "$MINOR" =~ ^0[0-9]+ ]] || [[ "$PATCH" =~ ^0[0-9]+ ]]; then
                     echo "❌ Error: Version numbers must not have leading zeros"
@@ -51,7 +51,7 @@ jobs:
                     echo "Major: $MAJOR, Minor: $MINOR, Patch: $PATCH"
                     exit 1
                 fi
-                
+
                 echo "✅ Tag format validated successfully: $TAG"
                 echo "   Major: $MAJOR"
                 echo "   Minor: $MINOR"
@@ -108,7 +108,7 @@ jobs:
                 format: 'sarif'
                 output: 'trivy-results.sarif'
                 severity: 'CRITICAL,HIGH'
-                exit-code: '0'  # Non-blocking: scan is informational only
+                exit-code: '0' # Non-blocking: scan is informational only
 
             - name: Upload Trivy results to GitHub Security tab
               uses: github/codeql-action/upload-sarif@v3

@@ -72,7 +72,7 @@ jobs:
                 format: 'sarif'
                 output: 'trivy-results.sarif'
                 severity: 'CRITICAL,HIGH'
-                exit-code: '0'  # Non-blocking: scan is informational only
+                exit-code: '0' # Non-blocking: scan is informational only
 
             - name: Upload Trivy results to GitHub Security tab
               uses: github/codeql-action/upload-sarif@v3
@@ -100,7 +100,7 @@ jobs:
                 script: |
                     const packageName = context.repo.repo.toLowerCase();
                     const username = context.repo.owner;
-                    
+
                     try {
                         // Get all versions of the package
                         const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
@@ -110,25 +110,25 @@ jobs:
                             per_page: 100,
                             page: 1
                         });
-                        
+
                         // Filter untagged versions (images without tags)
                         const untaggedVersions = versions.data.filter(version => {
                             return version.metadata.container.tags.length === 0;
                         });
-                        
+
                         console.log(`Found ${untaggedVersions.length} untagged versions`);
-                        
+
                         if (untaggedVersions.length <= 5) {
                             console.log('5 or fewer untagged versions, nothing to delete');
                             return;
                         }
-                        
+
                         // Sort by creation date (newest first)
                         untaggedVersions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                        
+
                         // Keep the 5 newest, delete the rest
                         const toDelete = untaggedVersions.slice(5);
-                        
+
                         for (const version of toDelete) {
                             console.log(`Deleting version ${version.id} (created: ${version.created_at})`);
                             await github.rest.packages.deletePackageVersionForUser({
@@ -138,7 +138,7 @@ jobs:
                                 package_version_id: version.id
                             });
                         }
-                        
+
                         console.log(`Deleted ${toDelete.length} old untagged versions`);
                     } catch (error) {
                         console.log(`Cleanup failed: ${error.message}`);
