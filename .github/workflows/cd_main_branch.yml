@@ -20,6 +20,7 @@ jobs:
             packages: write
             id-token: write
             attestations: write
+            security-events: write
 
         steps:
             - name: Checkout repository
@@ -32,6 +33,9 @@ jobs:
 
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3
+
+            - name: Install cosign
+              uses: sigstore/cosign-installer@v3.7.0
 
             - name: Log in to GitHub Container Registry
               uses: docker/login-action@v3
@@ -61,9 +65,82 @@ jobs:
                 cache-from: type=gha
                 cache-to: type=gha,mode=max
 
+            - name: Run Trivy vulnerability scanner
+              uses: aquasecurity/trivy-action@0.28.0
+              with:
+                image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+                format: 'sarif'
+                output: 'trivy-results.sarif'
+                severity: 'CRITICAL,HIGH'
+                exit-code: '0' # Non-blocking: scan is informational only
+
+            - name: Upload Trivy results to GitHub Security tab
+              uses: github/codeql-action/upload-sarif@v3
+              if: always()
+              with:
+                sarif_file: 'trivy-results.sarif'
+
+            - name: Sign the container image with cosign
+              env:
+                DIGEST: ${{ steps.build.outputs.digest }}
+                TAGS: ${{ steps.meta.outputs.tags }}
+              run: |
+                echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+
             - name: Generate artifact attestation
               uses: actions/attest-build-provenance@v3
               with:
                 subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
                 subject-digest: ${{ steps.build.outputs.digest }}
                 push-to-registry: true
+
+            - name: Clean up old untagged images
+              uses: actions/github-script@v7
+              with:
+                script: |
+                    const packageName = context.repo.repo.toLowerCase();
+                    const username = context.repo.owner;
+
+                    try {
+                        // Get all versions of the package
+                        const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
+                            package_type: 'container',
+                            package_name: packageName,
+                            username: username,
+                            per_page: 100,
+                            page: 1
+                        });
+
+                        // Filter untagged versions (images without tags)
+                        const untaggedVersions = versions.data.filter(version => {
+                            return version.metadata.container.tags.length === 0;
+                        });
+
+                        console.log(`Found ${untaggedVersions.length} untagged versions`);
+
+                        if (untaggedVersions.length <= 5) {
+                            console.log('5 or fewer untagged versions, nothing to delete');
+                            return;
+                        }
+
+                        // Sort by creation date (newest first)
+                        untaggedVersions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+                        // Keep the 5 newest, delete the rest
+                        const toDelete = untaggedVersions.slice(5);
+
+                        for (const version of toDelete) {
+                            console.log(`Deleting version ${version.id} (created: ${version.created_at})`);
+                            await github.rest.packages.deletePackageVersionForUser({
+                                package_type: 'container',
+                                package_name: packageName,
+                                username: username,
+                                package_version_id: version.id
+                            });
+                        }
+
+                        console.log(`Deleted ${toDelete.length} old untagged versions`);
+                    } catch (error) {
+                        console.log(`Cleanup failed: ${error.message}`);
+                        // Don't fail the workflow if cleanup fails
+                    }
