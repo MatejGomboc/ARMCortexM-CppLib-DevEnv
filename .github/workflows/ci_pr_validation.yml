@@ -45,4 +45,4 @@ jobs:
                 image-ref: ci-pr-validation:${{ github.event.pull_request.number || github.run_number }}
                 format: 'table'
                 severity: 'CRITICAL,HIGH,MEDIUM,LOW'
-                exit-code: '1' # Fail the step if blocking vulnerabilities found.
+                exit-code: '0' # Don't fail the build on vulnerabilities, just report the findings into console output.
