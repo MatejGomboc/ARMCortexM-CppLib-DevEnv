@@ -26,16 +26,6 @@ docker run -it --rm \
   /bin/bash
 ```
 
-#### Building a Project
-
-```bash
-docker run --rm \
-  -v $(pwd):/workspace \
-  -w /workspace \
-  ghcr.io/matejgomboc/armcortexm-cpplib-devenv:latest \
-  cmake -B build -S . -DARM_CORTEX_M_ARCH=0
-```
-
 #### With VS Code Dev Containers
 
 Add to your `.devcontainer/devcontainer.json`:
@@ -51,15 +41,16 @@ Add to your `.devcontainer/devcontainer.json`:
 ### Available Tags
 
 - `latest` - Latest stable build from main branch. It's updated during each merge into main and also weekly through a cron job (every Saturday at 00:00 AM UTC).
-- `1.2.3` - Build from a release tag with an exact version (immutable) each time such kind of a tag is created.
-- `1.2` - Latest version of the 1.2.x series (updated each time a new 1.2.x is created).
-- `1` - Latest version of the 1.x.x series (updated each time a new 1.x.x is created).
+- `1.2.3` - Build from a release tag with an exact version (immutable) each time such kind of a tag is created. TODO!!!
+- `1.2` - Latest version of the 1.2.x series (updated each time a new 1.2.x is created). TODO!!!
+- `1` - Latest version of the 1.x.x series (updated each time a new 1.x.x is created). TODO!!!
 
 ### Included Tools
 
 - **Build System**
   - Ninja Build
   - CMake
+  - GIT
 
 - **ARM Toolchain**
   - complete arm-none-eabi-* suite
