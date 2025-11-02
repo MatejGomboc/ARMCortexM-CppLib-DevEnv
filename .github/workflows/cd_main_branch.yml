@@ -126,19 +126,38 @@ jobs:
 
                         console.log(`Found ${untaggedVersions.length} untagged versions`);
 
-                        if (untaggedVersions.length <= 5) {
-                            console.log('5 or fewer untagged versions, nothing to delete');
+                        if (untaggedVersions.length === 0) {
+                            console.log('No untagged versions found');
                             return;
                         }
 
-                        // Sort by creation date (newest first)
-                        untaggedVersions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                        // Calculate cutoff date (30 days ago)
+                        const retentionDays = 30;
+                        const cutoffDate = new Date();
+                        cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+                        
+                        console.log(`Cutoff date: ${cutoffDate.toISOString()}`);
+                        console.log(`Deleting untagged versions older than ${retentionDays} days`);
 
-                        // Keep the 5 newest, delete the rest
-                        const toDelete = untaggedVersions.slice(5);
+                        // Filter versions older than 30 days
+                        const toDelete = untaggedVersions.filter(version => {
+                            const versionDate = new Date(version.created_at);
+                            return versionDate < cutoffDate;
+                        });
 
+                        console.log(`Found ${toDelete.length} untagged versions older than ${retentionDays} days`);
+
+                        if (toDelete.length === 0) {
+                            console.log('No old untagged versions to delete');
+                            return;
+                        }
+
+                        // Delete old untagged versions
                         for (const version of toDelete) {
-                            console.log(`Deleting version ${version.id} (created: ${version.created_at})`);
+                            const versionDate = new Date(version.created_at);
+                            const ageInDays = Math.floor((Date.now() - versionDate.getTime()) / (1000 * 60 * 60 * 24));
+                            console.log(`Deleting version ${version.id} (created: ${version.created_at}, age: ${ageInDays} days)`);
+                            
                             await github.rest.packages.deletePackageVersionForUser({
                                 package_type: 'container',
                                 package_name: packageName,
@@ -147,7 +166,8 @@ jobs:
                             });
                         }
 
-                        console.log(`Deleted ${toDelete.length} old untagged versions`);
+                        console.log(`Successfully deleted ${toDelete.length} old untagged versions`);
+                        console.log(`Kept ${untaggedVersions.length - toDelete.length} untagged versions from the last ${retentionDays} days`);
                     } catch (error) {
                         console.log(`Cleanup failed: ${error.message}`);
                         // Don't fail the workflow if cleanup fails
