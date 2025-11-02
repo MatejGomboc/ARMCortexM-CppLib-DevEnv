@@ -119,11 +119,16 @@ jobs:
                             page: 1
                         });
 
-                        // Filter untagged versions (images without tags)
-                        const untaggedVersions = versions.data.filter(version => {
-                            return version.metadata.container.tags.length === 0;
-                        });
+                        // Separate tagged and untagged versions
+                        const taggedVersions = versions.data.filter(version => 
+                            version.metadata.container.tags.length > 0
+                        );
+                        
+                        const untaggedVersions = versions.data.filter(version => 
+                            version.metadata.container.tags.length === 0
+                        );
 
+                        console.log(`Found ${taggedVersions.length} tagged versions`);
                         console.log(`Found ${untaggedVersions.length} untagged versions`);
 
                         if (untaggedVersions.length === 0) {
@@ -131,32 +136,89 @@ jobs:
                             return;
                         }
 
-                        // Calculate cutoff date (30 days ago)
+                        // Function to check if tags include a semantic version (not just 'latest')
+                        const hasSemanticVersion = (tags) => {
+                            return tags.some(tag => tag.match(/^v?\d+(\.\d+)*$/));
+                        };
+
+                        // Group untagged artifacts with their tagged versions
+                        // Artifacts are created within ~5 minutes of the tagged image
+                        const timeWindowMs = 5 * 60 * 1000; // 5 minutes
                         const retentionDays = 30;
                         const cutoffDate = new Date();
                         cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
                         
-                        console.log(`Cutoff date: ${cutoffDate.toISOString()}`);
-                        console.log(`Deleting untagged versions older than ${retentionDays} days`);
-
-                        // Filter versions older than 30 days
-                        const toDelete = untaggedVersions.filter(version => {
-                            const versionDate = new Date(version.created_at);
-                            return versionDate < cutoffDate;
-                        });
-
-                        console.log(`Found ${toDelete.length} untagged versions older than ${retentionDays} days`);
-
+                        const artifactsToKeep = new Set();
+                        
+                        console.log(`\nAnalyzing bundles (tagged images + their artifacts):`);
+                        console.log(`Retention policy: Keep 'latest' bundles from last ${retentionDays} days, keep ALL versioned tag bundles forever\n`);
+                        
+                        for (const tagged of taggedVersions) {
+                            const taggedDate = new Date(tagged.created_at);
+                            const hasVersionTag = hasSemanticVersion(tagged.metadata.container.tags);
+                            const hasLatestTag = tagged.metadata.container.tags.includes('latest');
+                            const tags = tagged.metadata.container.tags.join(', ');
+                            
+                            console.log(`Bundle: [${tags}] (created: ${tagged.created_at})`);
+                            
+                            // Find untagged artifacts created around the same time (same bundle)
+                            const bundleArtifacts = untaggedVersions.filter(untagged => {
+                                const untaggedDate = new Date(untagged.created_at);
+                                const timeDiff = Math.abs(untaggedDate - taggedDate);
+                                return timeDiff <= timeWindowMs;
+                            });
+                            
+                            console.log(`  -> Found ${bundleArtifacts.length} artifacts in this bundle`);
+                            
+                            // Decide whether to keep this bundle
+                            let keepBundle = false;
+                            let reason = '';
+                            
+                            if (hasVersionTag) {
+                                // Semantic version tags: ALWAYS keep their artifacts forever
+                                keepBundle = true;
+                                reason = 'versioned release (kept forever)';
+                            } else if (hasLatestTag) {
+                                // Latest tag: check age
+                                if (taggedDate >= cutoffDate) {
+                                    keepBundle = true;
+                                    const ageInDays = Math.floor((Date.now() - taggedDate.getTime()) / (1000 * 60 * 60 * 24));
+                                    reason = `'latest' bundle within retention (${ageInDays} days old)`;
+                                } else {
+                                    keepBundle = false;
+                                    const ageInDays = Math.floor((Date.now() - taggedDate.getTime()) / (1000 * 60 * 60 * 24));
+                                    reason = `'latest' bundle older than ${retentionDays} days (${ageInDays} days old)`;
+                                }
+                            }
+                            
+                            if (keepBundle) {
+                                console.log(`  ✅ KEEPING: ${reason}`);
+                                bundleArtifacts.forEach(artifact => artifactsToKeep.add(artifact.id));
+                            } else {
+                                console.log(`  ❌ ELIGIBLE FOR DELETION: ${reason}`);
+                            }
+                        }
+                        
+                        // Delete untagged versions not in the keep set
+                        const toDelete = untaggedVersions.filter(version => !artifactsToKeep.has(version.id));
+                        
+                        console.log(`\n========================================`);
+                        console.log(`Summary:`);
+                        console.log(`  - Total untagged artifacts: ${untaggedVersions.length}`);
+                        console.log(`  - Artifacts to keep: ${artifactsToKeep.size}`);
+                        console.log(`  - Artifacts to delete: ${toDelete.length}`);
+                        console.log(`========================================\n`);
+                        
                         if (toDelete.length === 0) {
-                            console.log('No old untagged versions to delete');
+                            console.log('✅ No artifacts to delete');
                             return;
                         }
-
-                        // Delete old untagged versions
+                        
+                        console.log(`Deleting ${toDelete.length} artifacts:\n`);
+                        
                         for (const version of toDelete) {
-                            const versionDate = new Date(version.created_at);
-                            const ageInDays = Math.floor((Date.now() - versionDate.getTime()) / (1000 * 60 * 60 * 24));
-                            console.log(`Deleting version ${version.id} (created: ${version.created_at}, age: ${ageInDays} days)`);
+                            const ageInDays = Math.floor((Date.now() - new Date(version.created_at).getTime()) / (1000 * 60 * 60 * 24));
+                            console.log(`  Deleting artifact ${version.id} (created: ${version.created_at}, age: ${ageInDays} days)`);
                             
                             await github.rest.packages.deletePackageVersionForUser({
                                 package_type: 'container',
@@ -165,10 +227,10 @@ jobs:
                                 package_version_id: version.id
                             });
                         }
-
-                        console.log(`Successfully deleted ${toDelete.length} old untagged versions`);
-                        console.log(`Kept ${untaggedVersions.length - toDelete.length} untagged versions from the last ${retentionDays} days`);
+                        
+                        console.log(`\n✅ Successfully deleted ${toDelete.length} old artifacts`);
                     } catch (error) {
-                        console.log(`Cleanup failed: ${error.message}`);
+                        console.log(`❌ Cleanup failed: ${error.message}`);
+                        console.error(error);
                         // Don't fail the workflow if cleanup fails
                     }
