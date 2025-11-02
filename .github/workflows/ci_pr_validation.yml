@@ -43,13 +43,6 @@ jobs:
               uses: aquasecurity/trivy-action@0.28.0
               with:
                 image-ref: ci-pr-validation:${{ github.event.pull_request.number || github.run_number }}
-                format: 'sarif'
-                output: 'trivy-results.sarif'
+                format: 'table'
                 severity: 'CRITICAL,HIGH,MEDIUM,LOW'
                 exit-code: '1' # Fail the step if blocking vulnerabilities found.
-
-            - name: Upload Trivy results to GitHub Security tab
-              uses: github/codeql-action/upload-sarif@v3
-              if: always()
-              with:
-                sarif_file: 'trivy-results.sarif'
