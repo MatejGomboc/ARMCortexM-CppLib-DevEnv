@@ -13,5 +13,3 @@ LICENCE
 # Editor configs
 .editorconfig
 .vscode
-
-# Note: .trivyignore is intentionally NOT excluded so Trivy can use it
