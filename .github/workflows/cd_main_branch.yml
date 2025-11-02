@@ -126,16 +126,16 @@ jobs:
 
                         console.log(`Found ${untaggedVersions.length} untagged versions`);
 
-                        if (untaggedVersions.length <= 5) {
-                            console.log('5 or fewer untagged versions, nothing to delete');
+                        if (untaggedVersions.length <= 6) {
+                            console.log('6 or fewer untagged versions, nothing to delete');
                             return;
                         }
 
                         // Sort by creation date (newest first)
                         untaggedVersions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-                        // Keep the 5 newest, delete the rest
-                        const toDelete = untaggedVersions.slice(5);
+                        // Keep the 6 newest, delete the rest
+                        const toDelete = untaggedVersions.slice(6);
 
                         for (const version of toDelete) {
                             console.log(`Deleting version ${version.id} (created: ${version.created_at})`);
