@@ -64,6 +64,7 @@ jobs:
                 labels: ${{ steps.meta.outputs.labels }}
                 cache-from: type=gha
                 cache-to: type=gha,mode=max
+                provenance: false
 
             - name: Run Trivy vulnerability scanner (table output)
               uses: aquasecurity/trivy-action@0.33.1
@@ -102,53 +103,53 @@ jobs:
                 subject-digest: ${{ steps.build.outputs.digest }}
                 push-to-registry: true
 
-            - name: Clean up old untagged images
-              uses: actions/github-script@v8
-              with:
-                script: |
-                    const packageName = context.repo.repo.toLowerCase();
-                    const username = context.repo.owner;
+            # - name: Clean up old untagged images
+            #   uses: actions/github-script@v8
+            #   with:
+            #     script: |
+            #         const packageName = context.repo.repo.toLowerCase();
+            #         const username = context.repo.owner;
 
-                    try {
-                        // Get all versions of the package
-                        const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
-                            package_type: 'container',
-                            package_name: packageName,
-                            username: username,
-                            per_page: 100,
-                            page: 1
-                        });
+            #         try {
+            #             // Get all versions of the package
+            #             const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
+            #                 package_type: 'container',
+            #                 package_name: packageName,
+            #                 username: username,
+            #                 per_page: 100,
+            #                 page: 1
+            #             });
 
-                        // Filter untagged versions (images without tags)
-                        const untaggedVersions = versions.data.filter(version => {
-                            return version.metadata.container.tags.length === 0;
-                        });
+            #             // Filter untagged versions (images without tags)
+            #             const untaggedVersions = versions.data.filter(version => {
+            #                 return version.metadata.container.tags.length === 0;
+            #             });
 
-                        console.log(`Found ${untaggedVersions.length} untagged versions`);
+            #             console.log(`Found ${untaggedVersions.length} untagged versions`);
 
-                        if (untaggedVersions.length <= 6) {
-                            console.log('6 or fewer untagged versions, nothing to delete');
-                            return;
-                        }
+            #             if (untaggedVersions.length <= 6) {
+            #                 console.log('6 or fewer untagged versions, nothing to delete');
+            #                 return;
+            #             }
 
-                        // Sort by creation date (newest first)
-                        untaggedVersions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            #             // Sort by creation date (newest first)
+            #             untaggedVersions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-                        // Keep the 6 newest, delete the rest
-                        const toDelete = untaggedVersions.slice(6);
+            #             // Keep the 6 newest, delete the rest
+            #             const toDelete = untaggedVersions.slice(6);
 
-                        for (const version of toDelete) {
-                            console.log(`Deleting version ${version.id} (created: ${version.created_at})`);
-                            await github.rest.packages.deletePackageVersionForUser({
-                                package_type: 'container',
-                                package_name: packageName,
-                                username: username,
-                                package_version_id: version.id
-                            });
-                        }
+            #             for (const version of toDelete) {
+            #                 console.log(`Deleting version ${version.id} (created: ${version.created_at})`);
+            #                 await github.rest.packages.deletePackageVersionForUser({
+            #                     package_type: 'container',
+            #                     package_name: packageName,
+            #                     username: username,
+            #                     package_version_id: version.id
+            #                 });
+            #             }
 
-                        console.log(`Deleted ${toDelete.length} old untagged versions`);
-                    } catch (error) {
-                        console.log(`Cleanup failed: ${error.message}`);
-                        // Don't fail the workflow if cleanup fails
-                    }
+            #             console.log(`Deleted ${toDelete.length} old untagged versions`);
+            #         } catch (error) {
+            #             console.log(`Cleanup failed: ${error.message}`);
+            #             // Don't fail the workflow if cleanup fails
+            #         }
