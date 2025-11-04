@@ -148,6 +148,9 @@ jobs:
     # Call the cleanup workflow after successful deployment
     cleanup_old_images:
         needs: deploy_release_tag
+        permissions:
+            contents: read
+            packages: write
         uses: ./.github/workflows/cleanup_old_images.yml
         with:
             package_name: ${{ github.event.repository.name }}
