@@ -260,19 +260,10 @@ jobs:
                                   return;
                               }
                           } else {
-                              // OLDER bundles: Position 4 MUST NOT have semantic tag (should be untagged)
-                              if (hasSemanticTag(pos4.metadata.container.tags)) {
-                                  console.log(`\n❌ ERROR: Bundle ${i + 1} (old) has invalid structure at position 4!`);
-                                  console.log('Position 4 must NOT have semantic tag (Docker image should be untagged in old bundles).\n');
-                                  console.log(`Details of Bundle ${i + 1}:`);
-                                  bundle.forEach((v, idx) => {
-                                      const tags = v.metadata.container.tags;
-                                      const tagInfo = tags.length > 0 ? `[TAGGED: ${tags.join(', ')}]` : '[untagged]';
-                                      console.log(`  Position ${idx}: ID ${v.id} | ${tagInfo}`);
-                                  });
-                                  core.setFailed('Cleanup aborted: old bundle structure validation failed');
-                                  return;
-                              }
+                              // OLDER bundles: Position 4 can be either:
+                              // - Untagged (superseded "latest" - will be deleted)
+                              // - Tagged with version (v1.2.3 - will be kept)
+                              // No validation needed - deletion logic handles this correctly
                           }
                       }
 
