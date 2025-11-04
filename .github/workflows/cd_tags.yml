@@ -3,6 +3,7 @@ name: Deployment Of A Release Tag
 on:
     push:
         tags: ["v*.*.*"] # Run only on release of a properly named tag.
+    # Note: No workflow_dispatch - tags should only be deployed when created, not manually triggered
 
 env:
     REGISTRY: ghcr.io
@@ -57,8 +58,12 @@ jobs:
                 echo "   Minor: $MINOR"
                 echo "   Patch: $PATCH"
 
-            - name: Checkout repository
+            # Checkout the specific tag that triggered this workflow
+            # This ensures we build from the tagged commit, not main branch
+            - name: Checkout repository at tag
               uses: actions/checkout@v5
+              with:
+                ref: ${{ github.ref }}
 
             - name: Lint Dockerfile
               uses: hadolint/hadolint-action@v3.3.0
@@ -84,7 +89,8 @@ jobs:
               with:
                 images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
                 tags: |
-                    # Semantic versioning tags
+                    # Semantic versioning tags from the tag name
+                    # This will create tags like: v1.2.3, v1.2, v1
                     type=semver,pattern={{version}}
                     type=semver,pattern={{major}}.{{minor}}
                     type=semver,pattern={{major}}
@@ -102,14 +108,22 @@ jobs:
                 cache-to: type=gha,mode=max
                 provenance: false # Disabled implicit provenance.
 
-            - name: Run Trivy vulnerability scanner
+            - name: Run Trivy vulnerability scanner (table output)
+              uses: aquasecurity/trivy-action@0.33.1
+              with:
+                image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+                format: 'table'
+                severity: 'CRITICAL,HIGH,MEDIUM,LOW'
+                exit-code: '0' # Don't fail the build on vulnerabilities, just report the findings.
+
+            - name: Run Trivy vulnerability scanner (SARIF output)
               uses: aquasecurity/trivy-action@0.33.1
               with:
                 image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
                 format: 'sarif'
                 output: 'trivy-results.sarif'
-                severity: 'CRITICAL,HIGH'
-                exit-code: '0' # Non-blocking: scan is informational only
+                severity: 'CRITICAL,HIGH,MEDIUM,LOW'
+                exit-code: '0' # Don't fail the build on vulnerabilities, just report the findings.
 
             - name: Upload Trivy results to GitHub Security tab
               uses: github/codeql-action/upload-sarif@v4
@@ -130,3 +144,17 @@ jobs:
                 subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
                 subject-digest: ${{ steps.build.outputs.digest }}
                 push-to-registry: true
+
+    # Call the cleanup workflow after successful deployment
+    cleanup_old_images:
+        needs: deploy_release_tag
+        permissions:
+            contents: read
+            packages: write
+        uses: ./.github/workflows/cleanup_old_images.yml
+        with:
+            package_name: ${{ github.event.repository.name }}
+            username: ${{ github.repository_owner }}
+            bundle_size: 5
+            keep_semantic_tagged: true
+        secrets: inherit
