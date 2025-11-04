@@ -38,6 +38,7 @@ jobs:
                 tags: ci-pr-validation:${{ github.event.pull_request.number || github.run_number }}
                 cache-from: type=gha
                 cache-to: type=gha,mode=max
+                provenance: false # Disabled implicit provenance.
 
             - name: Run Trivy vulnerability scanner (table output)
               uses: aquasecurity/trivy-action@0.33.1
