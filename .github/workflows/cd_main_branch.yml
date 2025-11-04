@@ -151,7 +151,7 @@ jobs:
                   const packageName = context.repo.repo.toLowerCase();
                   const username = context.repo.owner;
 
-                  const BUNDLE_SIZE = 5; // Each deployment: 1 tagged image + 4 artifacts
+                  const BUNDLE_SIZE = 5; // Each deployment: 1 Docker image + 4 artifacts
 
                   try {
                       const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
@@ -179,6 +179,7 @@ jobs:
                               const tagInfo = tags.length > 0 ? `[TAGGED: ${tags.join(', ')}]` : '[untagged]';
                               console.log(`  ${idx + 1}. ID: ${v.id} | Created: ${v.created_at} | ${tagInfo}`);
                           });
+                          core.setFailed('Cleanup aborted: incomplete bundles detected');
                           return;
                       }
 
@@ -195,53 +196,32 @@ jobs:
                           return;
                       }
 
-                      // STRICT VALIDATION: Check structure of every bundle
-                      for (let i = 0; i < bundles.length; i++) {
-                          const bundle = bundles[i];
+                      // Helper function to check if a tag is a semantic version tag (not SHA digest)
+                      const hasSemanticTag = (tags) => {
+                          return tags.some(tag => !tag.startsWith('sha256-') && !tag.startsWith('sha256:'));
+                      };
 
-                          // Check that only the oldest (last position) can have a tag
-                          for (let j = 0; j < bundle.length; j++) {
-                              const version = bundle[j];
-                              const hasTags = version.metadata.container.tags.length > 0;
-                              const isOldest = (j === bundle.length - 1);
-
-                              if (hasTags && !isOldest) {
-                                  console.log(`\n❌ ERROR: Bundle ${i + 1} has a tagged image at wrong position!`);
-                                  console.log(`Position ${j} is tagged, but only position ${bundle.length - 1} (oldest) should be tagged.`);
-                                  console.log('\nBundle structure is invalid. Aborting cleanup.\n');
-                                  console.log(`Details of Bundle ${i + 1}:`);
-                                  bundle.forEach((v, idx) => {
-                                      const tags = v.metadata.container.tags;
-                                      const tagInfo = tags.length > 0 ? `[TAGGED: ${tags.join(', ')}]` : '[untagged]';
-                                      const position = idx === bundle.length - 1 ? ' (oldest - should be Docker image)' : ' (should be artifact)';
-                                      console.log(`  Position ${idx}: ID ${v.id} | Created: ${v.created_at} | ${tagInfo}${position}`);
-                                  });
-                                  return;
-                              }
-                          }
-                      }
-
-                      console.log('✅ All bundles have valid structure (only oldest can be tagged)\n');
-
-                      // SAFETY CHECK: Verify the newest bundle has a tagged image
+                      // SAFETY CHECK: Verify the newest bundle has a Docker image with semantic tag
                       const newestBundle = bundles[0];
                       const newestDockerImage = newestBundle[newestBundle.length - 1];
                       const newestTags = newestDockerImage.metadata.container.tags;
 
-                      if (newestTags.length === 0) {
-                          console.log('❌ ERROR: Newest bundle does not have a tagged image!');
-                          console.log('Expected the current deployment to be tagged. Aborting cleanup.\n');
+                      if (newestTags.length === 0 || !hasSemanticTag(newestTags)) {
+                          console.log('❌ ERROR: Newest bundle Docker image does not have a semantic tag!');
+                          console.log('Expected the current deployment to be tagged with "latest" or version tag.\n');
                           console.log('Details of newest bundle:');
                           newestBundle.forEach((v, idx) => {
                               const tags = v.metadata.container.tags;
                               const tagInfo = tags.length > 0 ? `[TAGGED: ${tags.join(', ')}]` : '[untagged]';
-                              const position = idx === newestBundle.length - 1 ? ' (oldest - should be Docker image)' : ' (artifact)';
+                              const position = idx === newestBundle.length - 1 ? ' (Docker image)' : ' (artifact)';
                               console.log(`  Position ${idx}: ID ${v.id} | Created: ${v.created_at} | ${tagInfo}${position}`);
                           });
+                          core.setFailed('Cleanup aborted: newest bundle has invalid tag structure');
                           return;
                       }
 
-                      console.log(`✅ Safety check passed: Newest bundle is tagged "${newestTags[0]}"\n`);
+                      const semanticTags = newestTags.filter(tag => !tag.startsWith('sha256-') && !tag.startsWith('sha256:'));
+                      console.log(`✅ Safety check passed: Newest bundle Docker image tagged as "${semanticTags.join(', ')}"\n`);
 
                       let deletedBundles = 0;
                       let deletedArtifacts = 0;
@@ -249,13 +229,15 @@ jobs:
                       for (let i = 0; i < bundles.length; i++) {
                           const bundle = bundles[i];
 
-                          // The oldest in bundle is the Docker image (tagged or not)
+                          // The oldest in bundle is the Docker image
                           const dockerImage = bundle[bundle.length - 1];
                           const tags = dockerImage.metadata.container.tags;
 
-                          if (tags.length === 0) {
-                              // No tag = superseded "latest" → DELETE entire bundle
-                              console.log(`Bundle ${i + 1}: Untagged → DELETING`);
+                          // Check if Docker image has a semantic tag (not just SHA digest)
+                          if (tags.length === 0 || !hasSemanticTag(tags)) {
+                              // No semantic tag = superseded "latest" → DELETE entire bundle
+                              const tagInfo = tags.length > 0 ? `only SHA tags: ${tags.join(', ')}` : 'untagged';
+                              console.log(`Bundle ${i + 1}: Docker image ${tagInfo} → DELETING`);
 
                               for (const version of bundle) {
                                   console.log(`  - ${version.id} (${version.created_at})`);
@@ -269,8 +251,9 @@ jobs:
                               }
                               deletedBundles++;
                           } else {
-                              // Has tag → KEEP entire bundle
-                              console.log(`Bundle ${i + 1}: Tagged "${tags[0]}" → KEEPING`);
+                              // Has semantic tag (latest, v*.*.*)  → KEEP entire bundle
+                              const semanticTags = tags.filter(tag => !tag.startsWith('sha256-') && !tag.startsWith('sha256:'));
+                              console.log(`Bundle ${i + 1}: Docker image tagged "${semanticTags.join(', ')}" → KEEPING`);
                           }
                       }
 
@@ -278,4 +261,5 @@ jobs:
 
                   } catch (error) {
                       console.log(`⚠️ Cleanup failed: ${error.message}`);
+                      core.setFailed(`Cleanup failed: ${error.message}`);
                   }
