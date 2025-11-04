@@ -7,7 +7,7 @@ on:
     schedule:
         - cron: '0 0 * * 6' # Automatic trigger on every Saturday 00:00 AM UTC.
 
-# Prevent concurrent runs
+# Prevent concurrent runs.
 concurrency:
   group: cd-main-branch
   cancel-in-progress: false
@@ -36,7 +36,7 @@ jobs:
                   const currentRunId = context.runId;
                   const workflowId = context.workflow;
 
-                  // Get all in-progress runs for this workflow
+                  // Get all in-progress runs for this workflow.
                   const runs = await github.rest.actions.listWorkflowRuns({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
@@ -45,7 +45,7 @@ jobs:
                     per_page: 10
                   });
 
-                  // Filter out current run and check if any others are running
+                  // Filter out current run and check if any others are running.
                   const otherRuns = runs.data.workflow_runs.filter(run => run.id !== currentRunId);
 
                   if (otherRuns.length > 0) {
@@ -91,7 +91,7 @@ jobs:
               with:
                 images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
                 tags: |
-                    # Always set 'latest' tag (this workflow only runs from main)
+                    # Always set 'latest' tag (this workflow only runs from main).
                     type=raw,value=latest
 
             - name: Build and push Docker image
@@ -144,7 +144,7 @@ jobs:
                 subject-digest: ${{ steps.build.outputs.digest }}
                 push-to-registry: true
 
-    # Call the cleanup workflow after successful deployment
+    # Call the cleanup workflow after successful deployment.
     cleanup_old_images:
         needs: deploy_main_branch
         permissions:

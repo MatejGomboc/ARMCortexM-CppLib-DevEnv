@@ -25,11 +25,11 @@ on:
 jobs:
     cleanup:
         runs-on: ubuntu-latest
-        
+
         permissions:
             packages: write
             contents: read
-        
+
         steps:
             - name: Clean up old container images
               uses: actions/github-script@v8
@@ -49,14 +49,14 @@ jobs:
                           page: 1
                       });
 
-                      // Sort by creation date (newest first)
+                      // Sort by creation date (newest first).
                       const allVersions = versions.data.sort((a, b) =>
                           new Date(b.created_at) - new Date(a.created_at)
                       );
 
                       console.log(`Found ${allVersions.length} total versions`);
 
-                      // STRICT CHECK: Total versions must be divisible by bundle size
+                      // STRICT CHECK: Total versions must be divisible by bundle size.
                       if (allVersions.length % BUNDLE_SIZE !== 0) {
                           console.log(`\n❌ ERROR: Total versions (${allVersions.length}) is not divisible by ${BUNDLE_SIZE}!`);
                           console.log('All bundles must be complete. Aborting cleanup.\n');
@@ -70,7 +70,7 @@ jobs:
                           return;
                       }
 
-                      // Group into bundles
+                      // Group into bundles.
                       const bundles = [];
                       for (let i = 0; i < allVersions.length; i += BUNDLE_SIZE) {
                           bundles.push(allVersions.slice(i, i + BUNDLE_SIZE));
@@ -83,22 +83,22 @@ jobs:
                           return;
                       }
 
-                      // Helper function to check if tags contain only SHA256 digests
+                      // Helper function to check if tags contain only SHA256 digests.
                       const hasOnlySHATags = (tags) => {
                           return tags.length > 0 && tags.every(tag => tag.startsWith('sha256-') || tag.startsWith('sha256:'));
                       };
 
-                      // Helper function to check if tags contain semantic version tags
+                      // Helper function to check if tags contain semantic version tags.
                       const hasSemanticTag = (tags) => {
                           return tags.some(tag => !tag.startsWith('sha256-') && !tag.startsWith('sha256:'));
                       };
 
-                      // STRICT VALIDATION: Check EXACT structure of every bundle
+                      // STRICT VALIDATION: Check EXACT structure of every bundle.
                       for (let i = 0; i < bundles.length; i++) {
                           const bundle = bundles[i];
                           const isNewest = (i === 0);
 
-                          // Position 0 (newest in bundle): MUST have SHA256 tag ONLY
+                          // Position 0 (newest in bundle): MUST have SHA256 tag ONLY.
                           const pos0 = bundle[0];
                           if (!hasOnlySHATags(pos0.metadata.container.tags)) {
                               console.log(`\n❌ ERROR: Bundle ${i + 1} has invalid structure at position 0!`);
@@ -113,7 +113,7 @@ jobs:
                               return;
                           }
 
-                          // Positions 1-3: MUST be untagged
+                          // Positions 1-3: MUST be untagged.
                           for (let j = 1; j <= 3; j++) {
                               const artifact = bundle[j];
                               if (artifact.metadata.container.tags.length > 0) {
@@ -130,10 +130,10 @@ jobs:
                               }
                           }
 
-                          // Position 4 (oldest in bundle): Docker image
+                          // Position 4 (oldest in bundle): Docker image.
                           const pos4 = bundle[4];
                           if (isNewest) {
-                              // NEWEST bundle: Position 4 MUST have semantic tag (latest or v*.*.*)  
+                              // NEWEST bundle: Position 4 MUST have semantic tag (latest or v*.*.*).
                               if (!hasSemanticTag(pos4.metadata.container.tags)) {
                                   console.log(`\n❌ ERROR: Bundle ${i + 1} (newest) has invalid structure at position 4!`);
                                   console.log('Position 4 must have semantic tag like "latest" or "v1.2.3" (Docker image).\n');
@@ -148,18 +148,18 @@ jobs:
                               }
                           } else {
                               // OLDER bundles: Position 4 can be either:
-                              // - Untagged (superseded "latest" - will be deleted)
-                              // - Tagged with version (v1.2.3 - will be kept if KEEP_SEMANTIC_TAGGED is true)
-                              // No validation needed - deletion logic handles this correctly
+                              // - Untagged (superseded "latest" - will be deleted).
+                              // - Tagged with version (v1.2.3 - will be kept if KEEP_SEMANTIC_TAGGED is true).
+                              // No validation needed - deletion logic handles this correctly.
                           }
                       }
 
                       console.log('✅ All bundles have valid structure!\n');
 
-                      // Log newest bundle info
+                      // Log newest bundle info.
                       const newestBundle = bundles[0];
                       const newestDockerImage = newestBundle[4];
-                      const semanticTags = newestDockerImage.metadata.container.tags.filter(tag => 
+                      const semanticTags = newestDockerImage.metadata.container.tags.filter(tag =>
                           !tag.startsWith('sha256-') && !tag.startsWith('sha256:')
                       );
                       console.log(`✅ Newest bundle Docker image tagged as "${semanticTags.join(', ')}"\n`);
@@ -170,24 +170,24 @@ jobs:
                       for (let i = 0; i < bundles.length; i++) {
                           const bundle = bundles[i];
 
-                          // Position 4 is the Docker image
+                          // Position 4 is the Docker image.
                           const dockerImage = bundle[4];
                           const tags = dockerImage.metadata.container.tags;
 
-                          // Determine if this bundle should be deleted
+                          // Determine if this bundle should be deleted.
                           let shouldDelete = false;
-                          
+
                           if (!hasSemanticTag(tags)) {
-                              // No semantic tag = superseded "latest" → DELETE entire bundle
+                              // No semantic tag = superseded "latest" → DELETE entire bundle.
                               shouldDelete = true;
                           } else if (!KEEP_SEMANTIC_TAGGED && i !== 0) {
-                              // If not keeping semantic tagged and not the newest bundle → DELETE
+                              // If not keeping semantic tagged and not the newest bundle → DELETE.
                               shouldDelete = true;
                           }
 
                           if (shouldDelete) {
-                              const tagInfo = hasOnlySHATags(tags) ? `only SHA tags: ${tags.join(', ')}` : 
-                                              hasSemanticTag(tags) ? `semantic tags: ${tags.filter(t => !t.startsWith('sha256')).join(', ')}` : 
+                              const tagInfo = hasOnlySHATags(tags) ? `only SHA tags: ${tags.join(', ')}` :
+                                              hasSemanticTag(tags) ? `semantic tags: ${tags.filter(t => !t.startsWith('sha256')).join(', ')}` :
                                               'untagged';
                               console.log(`Bundle ${i + 1}: Docker image ${tagInfo} → DELETING`);
 
@@ -203,7 +203,7 @@ jobs:
                               }
                               deletedBundles++;
                           } else {
-                              // Has semantic tag and we're keeping them → KEEP entire bundle
+                              // Has semantic tag and we're keeping them → KEEP entire bundle.
                               const semanticTags = tags.filter(tag => !tag.startsWith('sha256-') && !tag.startsWith('sha256:'));
                               console.log(`Bundle ${i + 1}: Docker image tagged "${semanticTags.join(', ')}" → KEEPING`);
                           }
