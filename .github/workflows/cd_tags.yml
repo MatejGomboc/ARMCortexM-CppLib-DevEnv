@@ -3,7 +3,6 @@ name: Deployment Of A Release Tag
 on:
     push:
         tags: ["v*.*.*"] # Run only on release of a properly named tag.
-    # Note: No workflow_dispatch - tags should only be deployed when created, not manually triggered
 
 env:
     REGISTRY: ghcr.io
@@ -25,7 +24,7 @@ jobs:
               run: |
                 TAG="${{ github.ref_name }}"
 
-                # Strict validation: must be v{major}.{minor}.{patch} where all are non-negative integers
+                # Strict validation: must be v{major}.{minor}.{patch} where all are non-negative integers.
                 if [[ ! "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
                     echo "❌ Error: Tag '$TAG' does not match required format 'v{major}.{minor}.{patch}'"
                     echo ""
@@ -40,12 +39,12 @@ jobs:
                     exit 1
                 fi
 
-                # Extract version components
+                # Extract version components.
                 MAJOR="${BASH_REMATCH[1]}"
                 MINOR="${BASH_REMATCH[2]}"
                 PATCH="${BASH_REMATCH[3]}"
 
-                # Check for leading zeros (except for '0' itself)
+                # Check for leading zeros (except for '0' itself).
                 if [[ "$MAJOR" =~ ^0[0-9]+ ]] || [[ "$MINOR" =~ ^0[0-9]+ ]] || [[ "$PATCH" =~ ^0[0-9]+ ]]; then
                     echo "❌ Error: Version numbers must not have leading zeros"
                     echo "Tag: $TAG"
@@ -58,8 +57,8 @@ jobs:
                 echo "   Minor: $MINOR"
                 echo "   Patch: $PATCH"
 
-            # Checkout the specific tag that triggered this workflow
-            # This ensures we build from the tagged commit, not main branch
+            # Checkout the specific tag that triggered this workflow.
+            # This ensures we build from the tagged commit, not main branch.
             - name: Checkout repository at tag
               uses: actions/checkout@v5
               with:
@@ -89,7 +88,7 @@ jobs:
               with:
                 images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
                 tags: |
-                    # Semantic versioning tags from the tag name
+                    # Semantic versioning tags from the tag name.
                     # This will create tags like: v1.2.3, v1.2, v1
                     type=semver,pattern={{version}}
                     type=semver,pattern={{major}}.{{minor}}
