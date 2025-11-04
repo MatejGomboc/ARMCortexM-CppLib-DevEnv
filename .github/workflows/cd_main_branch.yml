@@ -7,6 +7,11 @@ on:
     schedule:
         - cron: '0 0 * * 6' # Automatic trigger on every Saturday 00:00 AM UTC.
 
+# Prevent concurrent runs
+concurrency:
+  group: cd-main-branch
+  cancel-in-progress: false
+
 env:
     REGISTRY: ghcr.io
     IMAGE_NAME: ${{ github.repository }}
@@ -21,8 +26,44 @@ jobs:
             id-token: write
             attestations: write
             security-events: write
+            actions: read
 
         steps:
+            - name: Check for concurrent runs
+              uses: actions/github-script@v8
+              with:
+                script: |
+                  const currentRunId = context.runId;
+                  const workflowId = context.workflow;
+                  
+                  // Get all in-progress runs for this workflow
+                  const runs = await github.rest.actions.listWorkflowRuns({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    workflow_id: '.github/workflows/cd_main_branch.yml',
+                    status: 'in_progress',
+                    per_page: 10
+                  });
+                  
+                  // Filter out current run and check if any others are running
+                  const otherRuns = runs.data.workflow_runs.filter(run => run.id !== currentRunId);
+                  
+                  if (otherRuns.length > 0) {
+                    console.log('❌ Another deployment is already in progress!');
+                    console.log(`\nCurrently running:`);
+                    otherRuns.forEach(run => {
+                      console.log(`  - Run #${run.run_number} (ID: ${run.id})`);
+                      console.log(`    Started: ${run.created_at}`);
+                      console.log(`    Triggered by: ${run.triggering_actor.login}`);
+                      console.log(`    URL: ${run.html_url}`);
+                    });
+                    console.log('\n💡 Please wait for the current deployment to finish and try again later.');
+                    core.setFailed('Deployment blocked: another run is already in progress');
+                    return;
+                  }
+                  
+                  console.log('✅ No concurrent runs detected, proceeding with deployment');
+
             - name: Checkout repository
               uses: actions/checkout@v5
 
@@ -107,52 +148,134 @@ jobs:
               uses: actions/github-script@v8
               with:
                 script: |
-                    const packageName = context.repo.repo.toLowerCase();
-                    const username = context.repo.owner;
-
-                    try {
-                        // Get all versions of the package
-                        const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
-                            package_type: 'container',
-                            package_name: packageName,
-                            username: username,
-                            per_page: 100,
-                            page: 1
-                        });
-
-                        // Filter untagged versions (images without tags)
-                        const untaggedVersions = versions.data.filter(version => {
-                            return version.metadata.container.tags.length === 0;
-                        });
-
-                        console.log(`Found ${untaggedVersions.length} untagged versions`);
-
-                        // Keep 9 newest untagged versions (3 artifacts × 3 most recent runs)
-                        if (untaggedVersions.length <= 9) {
-                            console.log('9 or fewer untagged versions, nothing to delete');
-                            return;
-                        }
-
-                        // Sort by creation date (newest first)
-                        untaggedVersions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-                        // Keep the 9 newest, delete the rest
-                        const toDelete = untaggedVersions.slice(9);
-
-                        console.log(`Keeping ${9} newest untagged versions, deleting ${toDelete.length} old ones`);
-
-                        for (const version of toDelete) {
-                            console.log(`Deleting version ${version.id} (created: ${version.created_at})`);
-                            await github.rest.packages.deletePackageVersionForUser({
-                                package_type: 'container',
-                                package_name: packageName,
-                                username: username,
-                                package_version_id: version.id
-                            });
-                        }
-
-                        console.log(`Successfully deleted ${toDelete.length} old untagged versions`);
-                    } catch (error) {
-                        console.log(`Cleanup failed: ${error.message}`);
-                        // Don't fail the workflow if cleanup fails
-                    }
+                  const packageName = context.repo.repo.toLowerCase();
+                  const username = context.repo.owner;
+                  
+                  const BUNDLE_SIZE = 5;  // Each deployment: 1 tagged image + 4 artifacts
+                  
+                  try {
+                      const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
+                          package_type: 'container',
+                          package_name: packageName,
+                          username: username,
+                          per_page: 100,
+                          page: 1
+                      });
+                      
+                      // Sort by creation date (newest first)
+                      const allVersions = versions.data.sort((a, b) => 
+                          new Date(b.created_at) - new Date(a.created_at)
+                      );
+                      
+                      console.log(`Found ${allVersions.length} total versions`);
+                      
+                      // STRICT CHECK: Total versions must be divisible by 5
+                      if (allVersions.length % BUNDLE_SIZE !== 0) {
+                          console.log(`\n❌ ERROR: Total versions (${allVersions.length}) is not divisible by ${BUNDLE_SIZE}!`);
+                          console.log('All bundles must be complete. Aborting cleanup.\n');
+                          console.log('Current versions in registry:');
+                          allVersions.forEach((v, idx) => {
+                              const tags = v.metadata.container.tags;
+                              const tagInfo = tags.length > 0 ? `[TAGGED: ${tags.join(', ')}]` : '[untagged]';
+                              console.log(`  ${idx + 1}. ID: ${v.id} | Created: ${v.created_at} | ${tagInfo}`);
+                          });
+                          return;
+                      }
+                      
+                      // Group into bundles of 5
+                      const bundles = [];
+                      for (let i = 0; i < allVersions.length; i += BUNDLE_SIZE) {
+                          bundles.push(allVersions.slice(i, i + BUNDLE_SIZE));
+                      }
+                      
+                      console.log(`Grouped into ${bundles.length} complete bundles of ${BUNDLE_SIZE}`);
+                      
+                      if (bundles.length === 0) {
+                          console.log('No bundles found, nothing to clean up');
+                          return;
+                      }
+                      
+                      // STRICT VALIDATION: Check structure of every bundle
+                      for (let i = 0; i < bundles.length; i++) {
+                          const bundle = bundles[i];
+                          
+                          // Check that only the oldest (last position) can have a tag
+                          for (let j = 0; j < bundle.length; j++) {
+                              const version = bundle[j];
+                              const hasTags = version.metadata.container.tags.length > 0;
+                              const isOldest = (j === bundle.length - 1);
+                              
+                              if (hasTags && !isOldest) {
+                                  console.log(`\n❌ ERROR: Bundle ${i + 1} has a tagged image at wrong position!`);
+                                  console.log(`Position ${j} is tagged, but only position ${bundle.length - 1} (oldest) should be tagged.`);
+                                  console.log('\nBundle structure is invalid. Aborting cleanup.\n');
+                                  console.log(`Details of Bundle ${i + 1}:`);
+                                  bundle.forEach((v, idx) => {
+                                      const tags = v.metadata.container.tags;
+                                      const tagInfo = tags.length > 0 ? `[TAGGED: ${tags.join(', ')}]` : '[untagged]';
+                                      const position = idx === bundle.length - 1 ? ' (oldest - should be Docker image)' : ' (should be artifact)';
+                                      console.log(`  Position ${idx}: ID ${v.id} | Created: ${v.created_at} | ${tagInfo}${position}`);
+                                  });
+                                  return;
+                              }
+                          }
+                      }
+                      
+                      console.log('✅ All bundles have valid structure (only oldest can be tagged)\n');
+                      
+                      // SAFETY CHECK: Verify the newest bundle has a tagged image
+                      const newestBundle = bundles[0];
+                      const newestDockerImage = newestBundle[newestBundle.length - 1];
+                      const newestTags = newestDockerImage.metadata.container.tags;
+                      
+                      if (newestTags.length === 0) {
+                          console.log('❌ ERROR: Newest bundle does not have a tagged image!');
+                          console.log('Expected the current deployment to be tagged. Aborting cleanup.\n');
+                          console.log('Details of newest bundle:');
+                          newestBundle.forEach((v, idx) => {
+                              const tags = v.metadata.container.tags;
+                              const tagInfo = tags.length > 0 ? `[TAGGED: ${tags.join(', ')}]` : '[untagged]';
+                              const position = idx === newestBundle.length - 1 ? ' (oldest - should be Docker image)' : ' (artifact)';
+                              console.log(`  Position ${idx}: ID ${v.id} | Created: ${v.created_at} | ${tagInfo}${position}`);
+                          });
+                          return;
+                      }
+                      
+                      console.log(`✅ Safety check passed: Newest bundle is tagged "${newestTags[0]}"\n`);
+                      
+                      let deletedBundles = 0;
+                      let deletedArtifacts = 0;
+                      
+                      for (let i = 0; i < bundles.length; i++) {
+                          const bundle = bundles[i];
+                          
+                          // The oldest in bundle is the Docker image (tagged or not)
+                          const dockerImage = bundle[bundle.length - 1];
+                          const tags = dockerImage.metadata.container.tags;
+                          
+                          if (tags.length === 0) {
+                              // No tag = superseded "latest" → DELETE entire bundle
+                              console.log(`Bundle ${i + 1}: Untagged → DELETING`);
+                              
+                              for (const version of bundle) {
+                                  console.log(`  - ${version.id} (${version.created_at})`);
+                                  await github.rest.packages.deletePackageVersionForUser({
+                                      package_type: 'container',
+                                      package_name: packageName,
+                                      username: username,
+                                      package_version_id: version.id
+                                  });
+                                  deletedArtifacts++;
+                              }
+                              deletedBundles++;
+                          } else {
+                              // Has tag → KEEP entire bundle
+                              console.log(`Bundle ${i + 1}: Tagged "${tags[0]}" → KEEPING`);
+                          }
+                      }
+                      
+                      console.log(`\n✅ Deleted ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
+                      
+                  } catch (error) {
+                      console.log(`⚠️ Cleanup failed: ${error.message}`);
+                  }
