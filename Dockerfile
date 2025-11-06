@@ -1,5 +1,9 @@
 FROM debian:13-slim AS downloader
 
+ARG NINJA_VERSION=v1.13.1
+ARG CMAKE_VERSION=v4.1.1
+ARG ARM_NONE_EABI_VERSION=14.3.rel1
+
 # hadolint ignore=DL3002
 USER root:root
 
@@ -7,21 +11,45 @@ WORKDIR /root
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# hadolint ignore=DL3008
+# hadolint ignore=DL3008,DL4001
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates wget unzip tar xz-utils && \
-    wget -q https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-linux.zip && \
-    echo "0830252db77884957a1a4b87b05a1e2d9b5f658b8367f82999a941884cbe0238  ninja-linux.zip" | sha256sum --check && \
-    unzip -q ninja-linux.zip -d /usr/local/bin && \
-    wget -q https://github.com/Kitware/CMake/releases/download/v4.1.1/cmake-4.1.1-linux-x86_64.tar.gz && \
-    echo "5a6c61cb62b38e153148a2c8d4af7b3d387f0c8c32b6dbceb5eb4af113efd65a  cmake-4.1.1-linux-x86_64.tar.gz" | sha256sum --check && \
+    apt-get install -y --no-install-recommends ca-certificates wget unzip tar xz-utils curl jq && \
+    NINJA_FILE="ninja-linux.zip" && \
+    NINJA_API_RESPONSE=$(curl -sSL "https://api.github.com/repos/ninja-build/ninja/releases/tags/${NINJA_VERSION}") && \
+    NINJA_DIGEST=$(echo "${NINJA_API_RESPONSE}" | jq -r ".assets[] | select(.name == \"${NINJA_FILE}\") | .digest") && \
+    if [ -z "${NINJA_DIGEST}" ] || [ "${NINJA_DIGEST}" = "null" ]; then \
+        echo "ERROR: Failed to get Ninja digest from GitHub API"; \
+        echo "API Response: ${NINJA_API_RESPONSE}"; \
+        exit 1; \
+    fi && \
+    NINJA_HASH=$(echo "${NINJA_DIGEST}" | cut -d: -f2) && \
+    wget -q "https://github.com/ninja-build/ninja/releases/download/${NINJA_VERSION}/${NINJA_FILE}" && \
+    echo "${NINJA_HASH}  ${NINJA_FILE}" | sha256sum --check && \
+    unzip -q "${NINJA_FILE}" -d /usr/local/bin && \
+    rm "${NINJA_FILE}" && \
+    CMAKE_VERSION_NUM="${CMAKE_VERSION#v}" && \
+    CMAKE_FILE="cmake-${CMAKE_VERSION_NUM}-linux-x86_64.tar.gz" && \
+    CMAKE_API_RESPONSE=$(curl -sSL "https://api.github.com/repos/Kitware/CMake/releases/tags/${CMAKE_VERSION}") && \
+    CMAKE_DIGEST=$(echo "${CMAKE_API_RESPONSE}" | jq -r ".assets[] | select(.name == \"${CMAKE_FILE}\") | .digest") && \
+    if [ -z "${CMAKE_DIGEST}" ] || [ "${CMAKE_DIGEST}" = "null" ]; then \
+        echo "ERROR: Failed to get CMake digest from GitHub API"; \
+        echo "API Response: ${CMAKE_API_RESPONSE}"; \
+        exit 1; \
+    fi && \
+    CMAKE_HASH=$(echo "${CMAKE_DIGEST}" | cut -d: -f2) && \
+    wget -q "https://github.com/Kitware/CMake/releases/download/${CMAKE_VERSION}/${CMAKE_FILE}" && \
+    echo "${CMAKE_HASH}  ${CMAKE_FILE}" | sha256sum --check && \
     mkdir -p /opt/cmake && \
-    tar -xzf cmake-4.1.1-linux-x86_64.tar.gz -C /opt/cmake --strip-components=1 && \
-    wget -q https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi.tar.xz && \
-    wget -q https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi.tar.xz.sha256asc && \
-    sha256sum --check arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi.tar.xz.sha256asc && \
+    tar -xzf "${CMAKE_FILE}" -C /opt/cmake --strip-components=1 && \
+    rm "${CMAKE_FILE}" && \
+    ARM_NONE_EABI_FILE="arm-gnu-toolchain-${ARM_NONE_EABI_VERSION}-x86_64-arm-none-eabi.tar.xz" && \
+    ARM_NONE_EABI_HASH_FILE="${ARM_NONE_EABI_FILE}.sha256asc" && \
+    wget -q "https://developer.arm.com/-/media/Files/downloads/gnu/${ARM_NONE_EABI_VERSION}/binrel/${ARM_NONE_EABI_FILE}" && \
+    wget -q "https://developer.arm.com/-/media/Files/downloads/gnu/${ARM_NONE_EABI_VERSION}/binrel/${ARM_NONE_EABI_HASH_FILE}" && \
+    sha256sum --check "${ARM_NONE_EABI_HASH_FILE}" && \
     mkdir -p /opt/arm-none-eabi-gcc && \
-    tar -xf arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi.tar.xz -C /opt/arm-none-eabi-gcc --strip-components=1
+    tar -xf "${ARM_NONE_EABI_FILE}" -C /opt/arm-none-eabi-gcc --strip-components=1 && \
+    rm "${ARM_NONE_EABI_FILE}" "${ARM_NONE_EABI_HASH_FILE}"
 
 FROM debian:13-slim
 
