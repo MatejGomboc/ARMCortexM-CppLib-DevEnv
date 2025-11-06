@@ -41,11 +41,13 @@ jobs:
                   const KEEP_SEMANTIC_TAGGED = ${{ inputs.keep_semantic_tagged }};
 
                   try {
+                      // Fetch only recent versions (last 10 bundles worth).
+                      // Older bundles were already cleaned up, no need to fetch them.
                       const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
                           package_type: 'container',
                           package_name: packageName,
                           username: username,
-                          per_page: 100,
+                          per_page: BUNDLE_SIZE * 10,
                           page: 1
                       });
 
