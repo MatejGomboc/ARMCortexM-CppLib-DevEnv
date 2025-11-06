@@ -41,13 +41,17 @@ jobs:
                   const KEEP_SEMANTIC_TAGGED = ${{ inputs.keep_semantic_tagged }};
 
                   try {
-                      // Fetch only recent versions (last 10 bundles worth).
-                      // Older bundles were already cleaned up, no need to fetch them.
+                      // Fetch only last 3 bundles worth of versions.
+                      // This is the minimum needed because cleanup runs after EVERY deployment:
+                      // - Bundle 1: Newly deployed (just created)
+                      // - Bundle 2: Previous deployment (might be superseded "latest" to delete)
+                      // - Bundle 3: Safety buffer (in case previous cleanup failed)
+                      // Older bundles were already cleaned up by previous runs.
                       const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
                           package_type: 'container',
                           package_name: packageName,
                           username: username,
-                          per_page: BUNDLE_SIZE * 10,
+                          per_page: BUNDLE_SIZE * 3,
                           page: 1
                       });
 
