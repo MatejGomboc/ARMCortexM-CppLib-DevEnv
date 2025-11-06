@@ -136,6 +136,7 @@ jobs:
                 DIGEST: ${{ steps.build.outputs.digest }}
                 TAGS: ${{ steps.meta.outputs.tags }}
               run: |
+                set -euo pipefail
                 echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
 
             - name: Generate artifact attestation

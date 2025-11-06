@@ -63,6 +63,7 @@ jobs:
 
             - name: Validate tag's name format
               run: |
+                set -euo pipefail
                 TAG="${{ github.ref_name }}"
 
                 # Strict validation: must be v{major}.{minor}.{patch} where all are non-negative integers.
@@ -177,6 +178,7 @@ jobs:
                 DIGEST: ${{ steps.build.outputs.digest }}
                 TAGS: ${{ steps.meta.outputs.tags }}
               run: |
+                set -euo pipefail
                 echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
 
             - name: Generate artifact attestation
