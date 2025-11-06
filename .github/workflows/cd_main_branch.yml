@@ -7,9 +7,9 @@ on:
     schedule:
         - cron: '0 0 * * 6' # Automatic trigger on every Saturday 00:00 AM UTC.
 
-# Prevent concurrent runs.
+# Prevent concurrent runs across ALL deployment workflows.
 concurrency:
-  group: cd-main-branch
+  group: deployment-pipeline
   cancel-in-progress: false
 
 env:
