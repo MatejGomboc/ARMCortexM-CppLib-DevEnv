@@ -25,7 +25,7 @@ RUN apt-get update && \
     echo "${NINJA_HASH}  ${NINJA_FILE}" | sha256sum --check && \
     unzip -q "${NINJA_FILE}" -d /usr/local/bin && \
     rm "${NINJA_FILE}" && \
-    CMAKE_VERSION_NUM=$(echo "${CMAKE_VERSION}" | sed 's/^v//') && \
+    CMAKE_VERSION_NUM="${CMAKE_VERSION#v}" && \
     CMAKE_FILE="cmake-${CMAKE_VERSION_NUM}-linux-x86_64.tar.gz" && \
     CMAKE_API_RESPONSE=$(curl -sSL "https://api.github.com/repos/Kitware/CMake/releases/tags/${CMAKE_VERSION}") && \
     CMAKE_DIGEST=$(echo "${CMAKE_API_RESPONSE}" | jq -r ".assets[] | select(.name == \"${CMAKE_FILE}\") | .digest") && \
