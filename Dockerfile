@@ -4,12 +4,14 @@ ARG NINJA_VERSION=v1.13.1
 ARG CMAKE_VERSION=v4.1.1
 ARG ARM_NONE_EABI_VERSION=14.3.rel1
 
+# hadolint ignore=DL3002
 USER root:root
 
 WORKDIR /root
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# hadolint ignore=DL3008,DL4001
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates wget unzip tar xz-utils curl jq && \
     NINJA_FILE="ninja-linux.zip" && \
@@ -58,6 +60,7 @@ LABEL org.opencontainers.image.title="ARMCortexM-CppLib Development Environment"
     org.opencontainers.image.vendor="https://github.com/MatejGomboc" \
     org.opencontainers.image.licenses="Apache-2.0"
 
+# hadolint ignore=DL3002
 USER root:root
 
 WORKDIR /root
