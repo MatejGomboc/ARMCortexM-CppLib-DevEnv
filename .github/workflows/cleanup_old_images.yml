@@ -41,30 +41,45 @@ jobs:
                   const KEEP_SEMANTIC_TAGGED = ${{ inputs.keep_semantic_tagged }};
 
                   try {
-                      // Fetch only last 3 bundles worth of versions.
-                      // This is the minimum needed because cleanup runs after EVERY deployment:
-                      // - Bundle 1: Newly deployed (just created)
-                      // - Bundle 2: Previous deployment (might be superseded "latest" to delete)
-                      // - Bundle 3: Safety buffer (in case previous cleanup failed)
-                      // Older bundles were already cleaned up by previous runs.
-                      const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
-                          package_type: 'container',
-                          package_name: packageName,
-                          username: username,
-                          per_page: BUNDLE_SIZE * 3,
-                          page: 1
-                      });
+                      // Fetch ALL package versions with pagination.
+                      // This ensures we don't miss old bundles if previous cleanup failed.
+                      let allVersions = [];
+                      let page = 1;
+                      let hasMore = true;
+
+                      console.log('Fetching all package versions...');
+
+                      while (hasMore) {
+                          const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
+                              package_type: 'container',
+                              package_name: packageName,
+                              username: username,
+                              per_page: 100,  // Maximum allowed per page
+                              page: page
+                          });
+
+                          allVersions = allVersions.concat(versions.data);
+                          hasMore = versions.data.length === 100;  // Check if there might be more pages
+                          
+                          console.log(`  Page ${page}: fetched ${versions.data.length} versions`);
+                          
+                          page++;
+
+                          // Safety limit to prevent infinite loops (max 1000 versions)
+                          if (page > 10) {
+                              console.log('⚠️ Reached safety limit of 10 pages (1000 versions)');
+                              break;
+                          }
+                      }
 
                       // Sort by creation date (newest first).
-                      const allVersions = versions.data.sort((a, b) =>
-                          new Date(b.created_at) - new Date(a.created_at)
-                      );
+                      allVersions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-                      console.log(`Found ${allVersions.length} total versions`);
+                      console.log(`\nFetched ${allVersions.length} total versions`);
 
-                      // STRICT CHECK: Total versions must be divisible by bundle size.
+                      // STRICT CHECK: Fetched versions must be divisible by bundle size.
                       if (allVersions.length % BUNDLE_SIZE !== 0) {
-                          console.log(`\n❌ ERROR: Total versions (${allVersions.length}) is not divisible by ${BUNDLE_SIZE}!`);
+                          console.log(`\n❌ ERROR: Fetched versions (${allVersions.length}) is not divisible by ${BUNDLE_SIZE}!`);
                           console.log('All bundles must be complete. Aborting cleanup.\n');
                           console.log('Current versions in registry:');
                           allVersions.forEach((v, idx) => {

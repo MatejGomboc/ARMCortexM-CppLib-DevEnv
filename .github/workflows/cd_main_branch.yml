@@ -26,54 +26,8 @@ jobs:
             id-token: write
             attestations: write
             security-events: write
-            actions: read
 
         steps:
-            - name: Check for concurrent runs
-              uses: actions/github-script@v8
-              with:
-                script: |
-                  const currentRunId = context.runId;
-
-                  // Check both deployment workflows for in-progress runs.
-                  const workflowFiles = [
-                    '.github/workflows/cd_main_branch.yml',
-                    '.github/workflows/cd_tags.yml'
-                  ];
-
-                  let otherRuns = [];
-
-                  for (const workflowFile of workflowFiles) {
-                    const runs = await github.rest.actions.listWorkflowRuns({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      workflow_id: workflowFile,
-                      status: 'in_progress',
-                      per_page: 10
-                    });
-
-                    // Filter out current run and collect all others.
-                    const others = runs.data.workflow_runs.filter(run => run.id !== currentRunId);
-                    otherRuns = otherRuns.concat(others);
-                  }
-
-                  if (otherRuns.length > 0) {
-                    console.log('❌ Another deployment is already in progress!');
-                    console.log(`\nCurrently running:`);
-                    otherRuns.forEach(run => {
-                      console.log(`  - Workflow: ${run.path}`);
-                      console.log(`    Run #${run.run_number} (ID: ${run.id})`);
-                      console.log(`    Started: ${run.created_at}`);
-                      console.log(`    Triggered by: ${run.triggering_actor.login}`);
-                      console.log(`    URL: ${run.html_url}`);
-                    });
-                    console.log('\n💡 Please wait for the current deployment to finish and try again later.');
-                    core.setFailed('Deployment blocked: another run is already in progress');
-                    return;
-                  }
-
-                  console.log('✅ No concurrent runs detected, proceeding with deployment');
-
             - name: Checkout repository
               uses: actions/checkout@v5
 
