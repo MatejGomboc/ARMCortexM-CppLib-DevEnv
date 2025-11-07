@@ -64,7 +64,7 @@ jobs:
                       // Initialize tracking variables at function scope
                       let deletedBundles = 0;
                       let deletedArtifacts = 0;
-                      const deletedImageDigests = [];  // Changed: specifically for Docker image digests
+                      const deletedImageDigests = [];
                       let deletedCaches = 0;
                       let totalCacheSize = 0;
 
@@ -245,7 +245,7 @@ jobs:
                                               'untagged';
                               console.log(`Bundle ${i + 1}: Docker image ${tagInfo} → DELETING`);
 
-                              // FIXED: Collect the Docker image digest (position 4) for attestation cleanup
+                              // Collect the Docker image digest for attestation cleanup.
                               const dockerImageDigest = dockerImage.name;
                               if (dockerImageDigest && dockerImageDigest.startsWith('sha256:')) {
                                   deletedImageDigests.push(dockerImageDigest);
