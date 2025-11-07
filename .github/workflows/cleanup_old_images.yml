@@ -1,4 +1,4 @@
-name: Cleanup Old Container Images
+name: Cleanup Old Container Images, Attestations, and Caches
 
 on:
     workflow_call:
@@ -21,6 +21,21 @@ on:
                 required: false
                 type: boolean
                 default: true
+            cleanup_attestations:
+                description: 'Clean up attestations for deleted images (default: true)'
+                required: false
+                type: boolean
+                default: true
+            cleanup_caches:
+                description: 'Clean up old GitHub Actions caches (default: true)'
+                required: false
+                type: boolean
+                default: true
+            cache_retention_days:
+                description: 'Keep caches newer than this many days (default: 7)'
+                required: false
+                type: number
+                default: 7
 
 jobs:
     cleanup:
@@ -29,9 +44,11 @@ jobs:
         permissions:
             packages: write
             contents: read
+            attestations: write
+            actions: write
 
         steps:
-            - name: Clean up old container images
+            - name: Clean up old container images, attestations, and caches
               uses: actions/github-script@v8
               with:
                 script: |
@@ -39,8 +56,20 @@ jobs:
                   const username = '${{ inputs.username }}';
                   const BUNDLE_SIZE = ${{ inputs.bundle_size }};
                   const KEEP_SEMANTIC_TAGGED = ${{ inputs.keep_semantic_tagged }};
+                  const CLEANUP_ATTESTATIONS = ${{ inputs.cleanup_attestations }};
+                  const CLEANUP_CACHES = ${{ inputs.cleanup_caches }};
+                  const CACHE_RETENTION_DAYS = ${{ inputs.cache_retention_days }};
 
                   try {
+                      // ============================================================
+                      // PHASE 1: CLEAN UP DOCKER IMAGES
+                      // ============================================================
+                      
+                      console.log('='.repeat(60));
+                      console.log('PHASE 1: CLEANING UP DOCKER IMAGES');
+                      console.log('='.repeat(60));
+                      console.log('');
+
                       // Fetch ALL package versions with pagination.
                       // This ensures we don't miss old bundles if previous cleanup failed.
                       let allVersions = [];
@@ -154,10 +183,10 @@ jobs:
                           // Position 4 (oldest in bundle): Docker image.
                           const pos4 = bundle[4];
                           if (isNewest) {
-                              // NEWEST bundle: Position 4 MUST have semantic tag (latest or v*.*.*).
+                              // NEWEST bundle: Position 4 MUST have semantic tag (latest or 1.2.3).
                               if (!hasSemanticTag(pos4.metadata.container.tags)) {
                                   console.log(`\n❌ ERROR: Bundle ${i + 1} (newest) has invalid structure at position 4!`);
-                                  console.log('Position 4 must have semantic tag like "latest" or "v1.2.3" (Docker image).\n');
+                                  console.log('Position 4 must have semantic tag like "latest" or "1.2.3" (Docker image).\n');
                                   console.log(`Details of Bundle ${i + 1}:`);
                                   bundle.forEach((v, idx) => {
                                       const tags = v.metadata.container.tags;
@@ -170,7 +199,7 @@ jobs:
                           } else {
                               // OLDER bundles: Position 4 can be either:
                               // - Untagged (superseded "latest" - will be deleted).
-                              // - Tagged with version (v1.2.3 - will be kept if KEEP_SEMANTIC_TAGGED is true).
+                              // - Tagged with version (1.2.3 - will be kept if KEEP_SEMANTIC_TAGGED is true).
                               // No validation needed - deletion logic handles this correctly.
                           }
                       }
@@ -187,6 +216,7 @@ jobs:
 
                       let deletedBundles = 0;
                       let deletedArtifacts = 0;
+                      const deletedDigests = [];  // Track digests for attestation cleanup
 
                       for (let i = 0; i < bundles.length; i++) {
                           const bundle = bundles[i];
@@ -214,6 +244,12 @@ jobs:
 
                               for (const version of bundle) {
                                   console.log(`  - ${version.id} (${version.created_at})`);
+                                  
+                                  // Extract digest from package name (format: sha256:abc123...)
+                                  if (version.name && version.name.startsWith('sha256:')) {
+                                      deletedDigests.push(version.name);
+                                  }
+                                  
                                   await github.rest.packages.deletePackageVersionForUser({
                                       package_type: 'container',
                                       package_name: packageName,
@@ -231,8 +267,154 @@ jobs:
                       }
 
                       console.log(`\n✅ Deleted ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
+                      console.log(`Collected ${deletedDigests.length} digests for attestation cleanup\n`);
+
+                      // ============================================================
+                      // PHASE 2: CLEAN UP ATTESTATIONS
+                      // ============================================================
+                      
+                      if (CLEANUP_ATTESTATIONS && deletedDigests.length > 0) {
+                          console.log('='.repeat(60));
+                          console.log('PHASE 2: CLEANING UP ATTESTATIONS');
+                          console.log('='.repeat(60));
+                          console.log('');
+                          
+                          console.log(`Found ${deletedDigests.length} deleted package digests`);
+                          console.log('Cleaning up associated attestations...\n');
+                          
+                          let deletedAttestations = 0;
+                          let attestationErrors = 0;
+
+                          for (const digest of deletedDigests) {
+                              try {
+                                  console.log(`Deleting attestations for digest: ${digest.substring(0, 20)}...`);
+                                  
+                                  // Use the REST API to delete attestations by subject digest
+                                  await github.request('DELETE /users/{username}/attestations/digest/{subject_digest}', {
+                                      username: username,
+                                      subject_digest: digest,
+                                      headers: {
+                                          'X-GitHub-Api-Version': '2022-11-28'
+                                      }
+                                  });
+                                  
+                                  deletedAttestations++;
+                              } catch (error) {
+                                  // 404 is expected if no attestations exist for this digest
+                                  if (error.status === 404) {
+                                      console.log(`  ℹ️  No attestations found for this digest`);
+                                  } else {
+                                      console.log(`  ⚠️  Error deleting attestations: ${error.message}`);
+                                      attestationErrors++;
+                                  }
+                              }
+                          }
+                          
+                          console.log(`\n✅ Deleted attestations for ${deletedAttestations} digests`);
+                          if (attestationErrors > 0) {
+                              console.log(`⚠️  ${attestationErrors} attestation deletion errors (non-fatal)`);
+                          }
+                          console.log('');
+                      } else if (CLEANUP_ATTESTATIONS) {
+                          console.log('ℹ️  No deleted digests, skipping attestation cleanup\n');
+                      }
+
+                      // ============================================================
+                      // PHASE 3: CLEAN UP OLD CACHES
+                      // ============================================================
+                      
+                      if (CLEANUP_CACHES) {
+                          console.log('='.repeat(60));
+                          console.log('PHASE 3: CLEANING UP OLD GITHUB ACTIONS CACHES');
+                          console.log('='.repeat(60));
+                          console.log('');
+                          
+                          const cutoffDate = new Date();
+                          cutoffDate.setDate(cutoffDate.getDate() - CACHE_RETENTION_DAYS);
+                          console.log(`Deleting caches older than ${CACHE_RETENTION_DAYS} days (before ${cutoffDate.toISOString()})\n`);
+                          
+                          let deletedCaches = 0;
+                          let totalCacheSize = 0;
+                          let cacheErrors = 0;
+
+                          try {
+                              // Fetch all caches with pagination
+                              let cachePage = 1;
+                              let hasMoreCaches = true;
+                              
+                              while (hasMoreCaches) {
+                                  const caches = await github.rest.actions.getActionsCacheList({
+                                      owner: context.repo.owner,
+                                      repo: context.repo.repo,
+                                      per_page: 100,
+                                      page: cachePage
+                                  });
+                                  
+                                  console.log(`Fetched ${caches.data.actions_caches.length} caches (page ${cachePage})`);
+                                  
+                                  for (const cache of caches.data.actions_caches) {
+                                      const cacheDate = new Date(cache.created_at);
+                                      
+                                      if (cacheDate < cutoffDate) {
+                                          try {
+                                              console.log(`  Deleting cache: ${cache.key} (${(cache.size_in_bytes / 1024 / 1024).toFixed(2)} MB, created ${cache.created_at})`);
+                                              
+                                              await github.rest.actions.deleteActionsCacheById({
+                                                  owner: context.repo.owner,
+                                                  repo: context.repo.repo,
+                                                  cache_id: cache.id
+                                              });
+                                              
+                                              deletedCaches++;
+                                              totalCacheSize += cache.size_in_bytes;
+                                          } catch (error) {
+                                              console.log(`    ⚠️  Error deleting cache: ${error.message}`);
+                                              cacheErrors++;
+                                          }
+                                      }
+                                  }
+                                  
+                                  hasMoreCaches = caches.data.actions_caches.length === 100;
+                                  cachePage++;
+                                  
+                                  // Safety limit
+                                  if (cachePage > 10) {
+                                      console.log('⚠️ Reached safety limit of 10 pages for caches');
+                                      break;
+                                  }
+                              }
+                              
+                              const totalCacheSizeMB = (totalCacheSize / 1024 / 1024).toFixed(2);
+                              console.log(`\n✅ Deleted ${deletedCaches} old caches (freed ${totalCacheSizeMB} MB)`);
+                              if (cacheErrors > 0) {
+                                  console.log(`⚠️  ${cacheErrors} cache deletion errors (non-fatal)`);
+                              }
+                              console.log('');
+                              
+                          } catch (error) {
+                              console.log(`⚠️ Cache cleanup failed: ${error.message}`);
+                              console.log('Continuing with workflow (cache cleanup is non-fatal)\n');
+                          }
+                      }
+
+                      // ============================================================
+                      // CLEANUP SUMMARY
+                      // ============================================================
+                      
+                      console.log('='.repeat(60));
+                      console.log('CLEANUP SUMMARY');
+                      console.log('='.repeat(60));
+                      console.log(`Docker Images:  Deleted ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
+                      if (CLEANUP_ATTESTATIONS) {
+                          console.log(`Attestations:   Cleaned up for ${deletedDigests.length} deleted digests`);
+                      }
+                      if (CLEANUP_CACHES) {
+                          console.log(`Caches:         Deleted ${deletedCaches} old caches`);
+                      }
+                      console.log('='.repeat(60));
 
                   } catch (error) {
-                      console.log(`⚠️ Cleanup failed: ${error.message}`);
+                      console.log(`\n⚠️ Cleanup failed: ${error.message}`);
+                      console.log(`Stack trace: ${error.stack}`);
                       core.setFailed(`Cleanup failed: ${error.message}`);
                   }
