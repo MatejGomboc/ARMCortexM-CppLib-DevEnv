@@ -158,6 +158,8 @@ jobs:
         permissions:
             contents: read
             packages: write
+            attestations: write
+            actions: write
         uses: ./.github/workflows/cleanup_old_images.yml
         with:
             package_name: ${{ github.event.repository.name }}
