@@ -61,6 +61,13 @@ jobs:
                   const CACHE_RETENTION_DAYS = ${{ inputs.cache_retention_days }};
 
                   try {
+                      // Initialize tracking variables at function scope
+                      let deletedBundles = 0;
+                      let deletedArtifacts = 0;
+                      const deletedDigests = [];
+                      let deletedCaches = 0;
+                      let totalCacheSize = 0;
+
                       // ============================================================
                       // PHASE 1: CLEAN UP DOCKER IMAGES
                       // ============================================================
@@ -214,10 +221,6 @@ jobs:
                       );
                       console.log(`✅ Newest bundle Docker image tagged as "${semanticTags.join(', ')}"\n`);
 
-                      let deletedBundles = 0;
-                      let deletedArtifacts = 0;
-                      const deletedDigests = [];  // Track digests for attestation cleanup
-
                       for (let i = 0; i < bundles.length; i++) {
                           const bundle = bundles[i];
 
@@ -333,8 +336,6 @@ jobs:
                           cutoffDate.setDate(cutoffDate.getDate() - CACHE_RETENTION_DAYS);
                           console.log(`Deleting caches older than ${CACHE_RETENTION_DAYS} days (before ${cutoffDate.toISOString()})\n`);
                           
-                          let deletedCaches = 0;
-                          let totalCacheSize = 0;
                           let cacheErrors = 0;
 
                           try {
