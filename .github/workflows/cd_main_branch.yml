@@ -34,25 +34,35 @@ jobs:
               with:
                 script: |
                   const currentRunId = context.runId;
-                  const workflowId = context.workflow;
 
-                  // Get all in-progress runs for this workflow.
-                  const runs = await github.rest.actions.listWorkflowRuns({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    workflow_id: '.github/workflows/cd_main_branch.yml',
-                    status: 'in_progress',
-                    per_page: 10
-                  });
+                  // Check both deployment workflows for in-progress runs.
+                  const workflowFiles = [
+                    '.github/workflows/cd_main_branch.yml',
+                    '.github/workflows/cd_tags.yml'
+                  ];
 
-                  // Filter out current run and check if any others are running.
-                  const otherRuns = runs.data.workflow_runs.filter(run => run.id !== currentRunId);
+                  let otherRuns = [];
+
+                  for (const workflowFile of workflowFiles) {
+                    const runs = await github.rest.actions.listWorkflowRuns({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      workflow_id: workflowFile,
+                      status: 'in_progress',
+                      per_page: 10
+                    });
+
+                    // Filter out current run and collect all others.
+                    const others = runs.data.workflow_runs.filter(run => run.id !== currentRunId);
+                    otherRuns = otherRuns.concat(others);
+                  }
 
                   if (otherRuns.length > 0) {
                     console.log('❌ Another deployment is already in progress!');
                     console.log(`\nCurrently running:`);
                     otherRuns.forEach(run => {
-                      console.log(`  - Run #${run.run_number} (ID: ${run.id})`);
+                      console.log(`  - Workflow: ${run.path}`);
+                      console.log(`    Run #${run.run_number} (ID: ${run.id})`);
                       console.log(`    Started: ${run.created_at}`);
                       console.log(`    Triggered by: ${run.triggering_actor.login}`);
                       console.log(`    URL: ${run.html_url}`);

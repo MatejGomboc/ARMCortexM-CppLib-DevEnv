@@ -22,6 +22,11 @@ RUN apt-get update && \
         echo "API Response: ${NINJA_API_RESPONSE}"; \
         exit 1; \
     fi && \
+    if [[ ! "${NINJA_DIGEST}" =~ ^sha256: ]]; then \
+        echo "ERROR: Unexpected Ninja digest format: ${NINJA_DIGEST}"; \
+        echo "Expected format: sha256:HASH"; \
+        exit 1; \
+    fi && \
     NINJA_HASH=$(echo "${NINJA_DIGEST}" | cut -d: -f2) && \
     wget -q "https://github.com/ninja-build/ninja/releases/download/${NINJA_VERSION}/${NINJA_FILE}" && \
     echo "${NINJA_HASH}  ${NINJA_FILE}" | sha256sum --check && \
@@ -34,6 +39,11 @@ RUN apt-get update && \
     if [ -z "${CMAKE_DIGEST}" ] || [ "${CMAKE_DIGEST}" = "null" ]; then \
         echo "ERROR: Failed to get CMake digest from GitHub API"; \
         echo "API Response: ${CMAKE_API_RESPONSE}"; \
+        exit 1; \
+    fi && \
+    if [[ ! "${CMAKE_DIGEST}" =~ ^sha256: ]]; then \
+        echo "ERROR: Unexpected CMake digest format: ${CMAKE_DIGEST}"; \
+        echo "Expected format: sha256:HASH"; \
         exit 1; \
     fi && \
     CMAKE_HASH=$(echo "${CMAKE_DIGEST}" | cut -d: -f2) && \
