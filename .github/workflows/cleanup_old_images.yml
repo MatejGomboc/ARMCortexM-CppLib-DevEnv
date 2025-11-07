@@ -64,7 +64,7 @@ jobs:
                       // Initialize tracking variables at function scope
                       let deletedBundles = 0;
                       let deletedArtifacts = 0;
-                      const deletedDigests = [];
+                      const deletedImageDigests = [];  // Changed: specifically for Docker image digests
                       let deletedCaches = 0;
                       let totalCacheSize = 0;
 
@@ -245,13 +245,15 @@ jobs:
                                               'untagged';
                               console.log(`Bundle ${i + 1}: Docker image ${tagInfo} → DELETING`);
 
+                              // FIXED: Collect the Docker image digest (position 4) for attestation cleanup
+                              const dockerImageDigest = dockerImage.name;
+                              if (dockerImageDigest && dockerImageDigest.startsWith('sha256:')) {
+                                  deletedImageDigests.push(dockerImageDigest);
+                                  console.log(`  Collected image digest for attestation cleanup: ${dockerImageDigest.substring(0, 20)}...`);
+                              }
+
                               for (const version of bundle) {
                                   console.log(`  - ${version.id} (${version.created_at})`);
-                                  
-                                  // Extract digest from package name (format: sha256:abc123...)
-                                  if (version.name && version.name.startsWith('sha256:')) {
-                                      deletedDigests.push(version.name);
-                                  }
                                   
                                   await github.rest.packages.deletePackageVersionForUser({
                                       package_type: 'container',
@@ -270,27 +272,27 @@ jobs:
                       }
 
                       console.log(`\n✅ Deleted ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
-                      console.log(`Collected ${deletedDigests.length} digests for attestation cleanup\n`);
+                      console.log(`Collected ${deletedImageDigests.length} image digests for attestation cleanup\n`);
 
                       // ============================================================
                       // PHASE 2: CLEAN UP ATTESTATIONS
                       // ============================================================
                       
-                      if (CLEANUP_ATTESTATIONS && deletedDigests.length > 0) {
+                      if (CLEANUP_ATTESTATIONS && deletedImageDigests.length > 0) {
                           console.log('='.repeat(60));
                           console.log('PHASE 2: CLEANING UP ATTESTATIONS');
                           console.log('='.repeat(60));
                           console.log('');
                           
-                          console.log(`Found ${deletedDigests.length} deleted package digests`);
+                          console.log(`Found ${deletedImageDigests.length} deleted Docker image digests`);
                           console.log('Cleaning up associated attestations...\n');
                           
                           let deletedAttestations = 0;
                           let attestationErrors = 0;
 
-                          for (const digest of deletedDigests) {
+                          for (const digest of deletedImageDigests) {
                               try {
-                                  console.log(`Deleting attestations for digest: ${digest.substring(0, 20)}...`);
+                                  console.log(`Deleting attestations for image digest: ${digest.substring(0, 20)}...`);
                                   
                                   // Use the REST API to delete attestations by subject digest
                                   await github.request('DELETE /users/{username}/attestations/digest/{subject_digest}', {
@@ -302,6 +304,7 @@ jobs:
                                   });
                                   
                                   deletedAttestations++;
+                                  console.log(`  ✅ Deleted attestations for this image`);
                               } catch (error) {
                                   // 404 is expected if no attestations exist for this digest
                                   if (error.status === 404) {
@@ -313,13 +316,13 @@ jobs:
                               }
                           }
                           
-                          console.log(`\n✅ Deleted attestations for ${deletedAttestations} digests`);
+                          console.log(`\n✅ Deleted attestations for ${deletedAttestations} image digests`);
                           if (attestationErrors > 0) {
                               console.log(`⚠️  ${attestationErrors} attestation deletion errors (non-fatal)`);
                           }
                           console.log('');
                       } else if (CLEANUP_ATTESTATIONS) {
-                          console.log('ℹ️  No deleted digests, skipping attestation cleanup\n');
+                          console.log('ℹ️  No deleted image digests, skipping attestation cleanup\n');
                       }
 
                       // ============================================================
@@ -407,7 +410,7 @@ jobs:
                       console.log('='.repeat(60));
                       console.log(`Docker Images:  Deleted ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
                       if (CLEANUP_ATTESTATIONS) {
-                          console.log(`Attestations:   Cleaned up for ${deletedDigests.length} deleted digests`);
+                          console.log(`Attestations:   Cleaned up for ${deletedImageDigests.length} deleted image digests`);
                       }
                       if (CLEANUP_CACHES) {
                           console.log(`Caches:         Deleted ${deletedCaches} old caches`);
