@@ -57,14 +57,26 @@ jobs:
               uses: actions/github-script@v8
               with:
                 script: |
-                  const packageName = '${{ inputs.package_name }}';
-                  const username = '${{ inputs.username }}';
+                  // ============================================================
+                  // NORMALIZE INPUT PARAMETERS
+                  // ============================================================
+                  // Docker normalizes container image names to lowercase, but GitHub
+                  // repository names can have mixed case (e.g., "MatejGomboc/ARMCortexM-CppLib-DevEnv").
+                  // While the GitHub Packages API appears to be case-insensitive, this is
+                  // undocumented behavior. We normalize to lowercase here for consistency
+                  // with Docker conventions and to prevent potential issues if API behavior changes.
+                  const packageName = '${{ inputs.package_name }}'.toLowerCase();
+                  const username = '${{ inputs.username }}'.toLowerCase();
+                  
                   const BUNDLE_SIZE = ${{ inputs.bundle_size }};
                   const KEEP_SEMANTIC_TAGGED = ${{ inputs.keep_semantic_tagged }};
                   const CLEANUP_ATTESTATIONS = ${{ inputs.cleanup_attestations }};
                   const CLEANUP_CACHES = ${{ inputs.cleanup_caches }};
                   const CACHE_RETENTION_DAYS = ${{ inputs.cache_retention_days }};
                   const DRY_RUN = ${{ inputs.dry_run }};
+
+                  console.log(`Normalized package name: ${packageName}`);
+                  console.log(`Normalized username: ${username}\n`);
 
                   try {
                       // Initialize tracking variables at function scope
