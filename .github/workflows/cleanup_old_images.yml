@@ -260,8 +260,7 @@ jobs:
                               const tagInfo = hasOnlySHATags(tags) ? `only SHA tags: ${tags.join(', ')}` :
                                               hasSemanticTag(tags) ? `semantic tags: ${tags.filter(t => !t.startsWith('sha256')).join(', ')}` :
                                               'untagged';
-                              const action = DRY_RUN ? 'WOULD DELETE' : 'DELETING';
-                              console.log(`Bundle ${i + 1}: Docker image ${tagInfo} → ${action}`);
+                              console.log(`Bundle ${i + 1}: Docker image ${tagInfo} → ${DRY_RUN ? 'WOULD DELETE' : 'DELETING'}`);
 
                               // Collect the Docker image digest for attestation cleanup.
                               const dockerImageDigest = dockerImage.name;
@@ -291,8 +290,7 @@ jobs:
                           }
                       }
 
-                      const deletionVerb = DRY_RUN ? 'Would delete' : 'Deleted';
-                      console.log(`\n✅ ${deletionVerb} ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
+                      console.log(`\n✅ ${DRY_RUN ? 'Would delete' : 'Deleted'} ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
                       console.log(`Collected ${deletedImageDigests.length} image digests for attestation cleanup\n`);
 
                       // ============================================================
@@ -306,16 +304,14 @@ jobs:
                           console.log('');
                           
                           console.log(`Found ${deletedImageDigests.length} deleted Docker image digests`);
-                          const action = DRY_RUN ? 'Would clean up' : 'Cleaning up';
-                          console.log(`${action} associated attestations...\n`);
+                          console.log(`${DRY_RUN ? 'Would clean up' : 'Cleaning up'} associated attestations...\n`);
                           
                           let deletedAttestations = 0;
                           let attestationErrors = 0;
 
                           for (const digest of deletedImageDigests) {
                               try {
-                                  const action = DRY_RUN ? 'Would delete' : 'Deleting';
-                                  console.log(`${action} attestations for image digest: ${digest.substring(0, 20)}...`);
+                                  console.log(`${DRY_RUN ? 'Would delete' : 'Deleting'} attestations for image digest: ${digest.substring(0, 20)}...`);
                                   
                                   if (!DRY_RUN) {
                                       // Use the REST API to delete attestations by subject digest
@@ -329,8 +325,7 @@ jobs:
                                   }
                                   
                                   deletedAttestations++;
-                                  const resultMsg = DRY_RUN ? 'Would delete attestations for this image' : 'Deleted attestations for this image';
-                                  console.log(`  ✅ ${resultMsg}`);
+                                  console.log(`  ✅ ${DRY_RUN ? 'Would delete attestations for this image' : 'Deleted attestations for this image'}`);
                               } catch (error) {
                                   // 404 is expected if no attestations exist for this digest
                                   if (error.status === 404) {
@@ -342,8 +337,7 @@ jobs:
                               }
                           }
                           
-                          const deletionVerb = DRY_RUN ? 'Would delete' : 'Deleted';
-                          console.log(`\n✅ ${deletionVerb} attestations for ${deletedAttestations} image digests`);
+                          console.log(`\n✅ ${DRY_RUN ? 'Would delete' : 'Deleted'} attestations for ${deletedAttestations} image digests`);
                           if (attestationErrors > 0) {
                               console.log(`⚠️  ${attestationErrors} attestation deletion errors (non-fatal)`);
                           }
@@ -364,8 +358,7 @@ jobs:
                           
                           const cutoffDate = new Date();
                           cutoffDate.setDate(cutoffDate.getDate() - CACHE_RETENTION_DAYS);
-                          const action = DRY_RUN ? 'Would delete' : 'Deleting';
-                          console.log(`${action} caches older than ${CACHE_RETENTION_DAYS} days (before ${cutoffDate.toISOString()})\n`);
+                          console.log(`${DRY_RUN ? 'Would delete' : 'Deleting'} caches older than ${CACHE_RETENTION_DAYS} days (before ${cutoffDate.toISOString()})\n`);
                           
                           let cacheErrors = 0;
 
@@ -389,8 +382,7 @@ jobs:
                                       
                                       if (cacheDate < cutoffDate) {
                                           try {
-                                              const action = DRY_RUN ? 'Would delete' : 'Deleting';
-                                              console.log(`  ${action} cache: ${cache.key} (${(cache.size_in_bytes / 1024 / 1024).toFixed(2)} MB, created ${cache.created_at})`);
+                                              console.log(`  ${DRY_RUN ? 'Would delete' : 'Deleting'} cache: ${cache.key} (${(cache.size_in_bytes / 1024 / 1024).toFixed(2)} MB, created ${cache.created_at})`);
                                               
                                               if (!DRY_RUN) {
                                                   await github.rest.actions.deleteActionsCacheById({
@@ -420,9 +412,7 @@ jobs:
                               }
                               
                               const totalCacheSizeMB = (totalCacheSize / 1024 / 1024).toFixed(2);
-                              const deletionVerb = DRY_RUN ? 'Would delete' : 'Deleted';
-                              const freedVerb = DRY_RUN ? 'would free' : 'freed';
-                              console.log(`\n✅ ${deletionVerb} ${deletedCaches} old caches (${freedVerb} ${totalCacheSizeMB} MB)`);
+                              console.log(`\n✅ ${DRY_RUN ? 'Would delete' : 'Deleted'} ${deletedCaches} old caches (${DRY_RUN ? 'would free' : 'freed'} ${totalCacheSizeMB} MB)`);
                               if (cacheErrors > 0) {
                                   console.log(`⚠️  ${cacheErrors} cache deletion errors (non-fatal)`);
                               }
@@ -444,14 +434,12 @@ jobs:
                           console.log('(DRY RUN - NO ACTUAL DELETIONS PERFORMED)');
                       }
                       console.log('='.repeat(60));
-                      const deletionVerb = DRY_RUN ? 'Would delete' : 'Deleted';
-                      console.log(`Docker Images:  ${deletionVerb} ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
+                      console.log(`Docker Images:  ${DRY_RUN ? 'Would delete' : 'Deleted'} ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
                       if (CLEANUP_ATTESTATIONS) {
-                          const cleanupVerb = DRY_RUN ? 'Would clean up' : 'Cleaned up';
-                          console.log(`Attestations:   ${cleanupVerb} for ${deletedImageDigests.length} deleted image digests`);
+                          console.log(`Attestations:   ${DRY_RUN ? 'Would clean up' : 'Cleaned up'} for ${deletedImageDigests.length} deleted image digests`);
                       }
                       if (CLEANUP_CACHES) {
-                          console.log(`Caches:         ${deletionVerb} ${deletedCaches} old caches`);
+                          console.log(`Caches:         ${DRY_RUN ? 'Would delete' : 'Deleted'} ${deletedCaches} old caches`);
                       }
                       console.log('='.repeat(60));
 
