@@ -74,6 +74,15 @@ jobs:
                 cache-to: type=gha,mode=max
                 provenance: false # Disabled implicit provenance.
 
+            - name: Verify image was pushed to registry
+              env:
+                IMAGE_REF: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+              run: |
+                set -euo pipefail
+                echo "Verifying image exists in registry: ${IMAGE_REF}"
+                docker manifest inspect "${IMAGE_REF}"
+                echo "✅ Image successfully pushed and verified"
+
             - name: Run Trivy vulnerability scanner (table output)
               uses: aquasecurity/trivy-action@0.33.1
               with:
@@ -100,10 +109,12 @@ jobs:
             - name: Sign the container image with cosign
               env:
                 DIGEST: ${{ steps.build.outputs.digest }}
-                TAGS: ${{ steps.meta.outputs.tags }}
+                IMAGE_NAME: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
               run: |
                 set -euo pipefail
-                echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+                # Sign once by digest; all tags pointing to this digest inherit the signature
+                cosign sign --yes "${IMAGE_NAME}@${DIGEST}"
+                echo "✅ Image signed successfully"
 
             - name: Generate artifact attestation
               uses: actions/attest-build-provenance@v3
