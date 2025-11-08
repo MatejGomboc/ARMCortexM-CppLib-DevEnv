@@ -30,6 +30,8 @@ jobs:
         steps:
             - name: Checkout repository
               uses: actions/checkout@v5
+              with:
+                ref: ${{ github.ref }}
 
             - name: Lint Dockerfile
               uses: hadolint/hadolint-action@v3.3.0
@@ -113,6 +115,9 @@ jobs:
     # Call the cleanup workflow after successful deployment.
     cleanup_old_images:
         needs: deploy_main_branch
+        concurrency:
+            group: cleanup-pipeline
+            cancel-in-progress: false
         permissions:
             contents: read
             packages: write
