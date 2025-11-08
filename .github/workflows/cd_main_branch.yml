@@ -109,11 +109,12 @@ jobs:
             - name: Sign the container image with cosign
               env:
                 DIGEST: ${{ steps.build.outputs.digest }}
-                IMAGE_NAME: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+                IMAGE_REF: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
               run: |
                 set -euo pipefail
-                # Sign once by digest; all tags pointing to this digest inherit the signature
-                cosign sign --yes "${IMAGE_NAME}@${DIGEST}"
+                # Extract image name without tag, then sign by digest
+                IMAGE_BASE="${IMAGE_REF%:*}"
+                cosign sign --yes "${IMAGE_BASE}@${DIGEST}"
                 echo "✅ Image signed successfully"
 
             - name: Generate artifact attestation
