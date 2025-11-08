@@ -36,6 +36,11 @@ on:
                 required: false
                 type: number
                 default: 7
+            dry_run:
+                description: 'Perform dry-run without actual deletion (default: false)'
+                required: false
+                type: boolean
+                default: false
 
 jobs:
     cleanup:
@@ -59,6 +64,7 @@ jobs:
                   const CLEANUP_ATTESTATIONS = ${{ inputs.cleanup_attestations }};
                   const CLEANUP_CACHES = ${{ inputs.cleanup_caches }};
                   const CACHE_RETENTION_DAYS = ${{ inputs.cache_retention_days }};
+                  const DRY_RUN = ${{ inputs.dry_run }};
 
                   try {
                       // Initialize tracking variables at function scope
@@ -67,6 +73,17 @@ jobs:
                       const deletedImageDigests = [];
                       let deletedCaches = 0;
                       let totalCacheSize = 0;
+
+                      // ============================================================
+                      // DRY RUN MODE INDICATOR
+                      // ============================================================
+                      
+                      if (DRY_RUN) {
+                          console.log('🔍'.repeat(30));
+                          console.log('🔍 DRY RUN MODE - NO ACTUAL DELETIONS WILL OCCUR 🔍');
+                          console.log('🔍'.repeat(30));
+                          console.log('');
+                      }
 
                       // ============================================================
                       // PHASE 1: CLEAN UP DOCKER IMAGES
@@ -243,7 +260,8 @@ jobs:
                               const tagInfo = hasOnlySHATags(tags) ? `only SHA tags: ${tags.join(', ')}` :
                                               hasSemanticTag(tags) ? `semantic tags: ${tags.filter(t => !t.startsWith('sha256')).join(', ')}` :
                                               'untagged';
-                              console.log(`Bundle ${i + 1}: Docker image ${tagInfo} → DELETING`);
+                              const action = DRY_RUN ? 'WOULD DELETE' : 'DELETING';
+                              console.log(`Bundle ${i + 1}: Docker image ${tagInfo} → ${action}`);
 
                               // Collect the Docker image digest for attestation cleanup.
                               const dockerImageDigest = dockerImage.name;
@@ -255,12 +273,14 @@ jobs:
                               for (const version of bundle) {
                                   console.log(`  - ${version.id} (${version.created_at})`);
                                   
-                                  await github.rest.packages.deletePackageVersionForUser({
-                                      package_type: 'container',
-                                      package_name: packageName,
-                                      username: username,
-                                      package_version_id: version.id
-                                  });
+                                  if (!DRY_RUN) {
+                                      await github.rest.packages.deletePackageVersionForUser({
+                                          package_type: 'container',
+                                          package_name: packageName,
+                                          username: username,
+                                          package_version_id: version.id
+                                      });
+                                  }
                                   deletedArtifacts++;
                               }
                               deletedBundles++;
@@ -271,7 +291,8 @@ jobs:
                           }
                       }
 
-                      console.log(`\n✅ Deleted ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
+                      const deletionVerb = DRY_RUN ? 'Would delete' : 'Deleted';
+                      console.log(`\n✅ ${deletionVerb} ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
                       console.log(`Collected ${deletedImageDigests.length} image digests for attestation cleanup\n`);
 
                       // ============================================================
@@ -285,26 +306,31 @@ jobs:
                           console.log('');
                           
                           console.log(`Found ${deletedImageDigests.length} deleted Docker image digests`);
-                          console.log('Cleaning up associated attestations...\n');
+                          const action = DRY_RUN ? 'Would clean up' : 'Cleaning up';
+                          console.log(`${action} associated attestations...\n`);
                           
                           let deletedAttestations = 0;
                           let attestationErrors = 0;
 
                           for (const digest of deletedImageDigests) {
                               try {
-                                  console.log(`Deleting attestations for image digest: ${digest.substring(0, 20)}...`);
+                                  const action = DRY_RUN ? 'Would delete' : 'Deleting';
+                                  console.log(`${action} attestations for image digest: ${digest.substring(0, 20)}...`);
                                   
-                                  // Use the REST API to delete attestations by subject digest
-                                  await github.request('DELETE /users/{username}/attestations/digest/{subject_digest}', {
-                                      username: username,
-                                      subject_digest: digest,
-                                      headers: {
-                                          'X-GitHub-Api-Version': '2022-11-28'
-                                      }
-                                  });
+                                  if (!DRY_RUN) {
+                                      // Use the REST API to delete attestations by subject digest
+                                      await github.request('DELETE /users/{username}/attestations/digest/{subject_digest}', {
+                                          username: username,
+                                          subject_digest: digest,
+                                          headers: {
+                                              'X-GitHub-Api-Version': '2022-11-28'
+                                          }
+                                      });
+                                  }
                                   
                                   deletedAttestations++;
-                                  console.log(`  ✅ Deleted attestations for this image`);
+                                  const resultMsg = DRY_RUN ? 'Would delete attestations for this image' : 'Deleted attestations for this image';
+                                  console.log(`  ✅ ${resultMsg}`);
                               } catch (error) {
                                   // 404 is expected if no attestations exist for this digest
                                   if (error.status === 404) {
@@ -316,7 +342,8 @@ jobs:
                               }
                           }
                           
-                          console.log(`\n✅ Deleted attestations for ${deletedAttestations} image digests`);
+                          const deletionVerb = DRY_RUN ? 'Would delete' : 'Deleted';
+                          console.log(`\n✅ ${deletionVerb} attestations for ${deletedAttestations} image digests`);
                           if (attestationErrors > 0) {
                               console.log(`⚠️  ${attestationErrors} attestation deletion errors (non-fatal)`);
                           }
@@ -337,7 +364,8 @@ jobs:
                           
                           const cutoffDate = new Date();
                           cutoffDate.setDate(cutoffDate.getDate() - CACHE_RETENTION_DAYS);
-                          console.log(`Deleting caches older than ${CACHE_RETENTION_DAYS} days (before ${cutoffDate.toISOString()})\n`);
+                          const action = DRY_RUN ? 'Would delete' : 'Deleting';
+                          console.log(`${action} caches older than ${CACHE_RETENTION_DAYS} days (before ${cutoffDate.toISOString()})\n`);
                           
                           let cacheErrors = 0;
 
@@ -361,13 +389,16 @@ jobs:
                                       
                                       if (cacheDate < cutoffDate) {
                                           try {
-                                              console.log(`  Deleting cache: ${cache.key} (${(cache.size_in_bytes / 1024 / 1024).toFixed(2)} MB, created ${cache.created_at})`);
+                                              const action = DRY_RUN ? 'Would delete' : 'Deleting';
+                                              console.log(`  ${action} cache: ${cache.key} (${(cache.size_in_bytes / 1024 / 1024).toFixed(2)} MB, created ${cache.created_at})`);
                                               
-                                              await github.rest.actions.deleteActionsCacheById({
-                                                  owner: context.repo.owner,
-                                                  repo: context.repo.repo,
-                                                  cache_id: cache.id
-                                              });
+                                              if (!DRY_RUN) {
+                                                  await github.rest.actions.deleteActionsCacheById({
+                                                      owner: context.repo.owner,
+                                                      repo: context.repo.repo,
+                                                      cache_id: cache.id
+                                                  });
+                                              }
                                               
                                               deletedCaches++;
                                               totalCacheSize += cache.size_in_bytes;
@@ -389,7 +420,9 @@ jobs:
                               }
                               
                               const totalCacheSizeMB = (totalCacheSize / 1024 / 1024).toFixed(2);
-                              console.log(`\n✅ Deleted ${deletedCaches} old caches (freed ${totalCacheSizeMB} MB)`);
+                              const deletionVerb = DRY_RUN ? 'Would delete' : 'Deleted';
+                              const freedVerb = DRY_RUN ? 'would free' : 'freed';
+                              console.log(`\n✅ ${deletionVerb} ${deletedCaches} old caches (${freedVerb} ${totalCacheSizeMB} MB)`);
                               if (cacheErrors > 0) {
                                   console.log(`⚠️  ${cacheErrors} cache deletion errors (non-fatal)`);
                               }
@@ -407,13 +440,18 @@ jobs:
                       
                       console.log('='.repeat(60));
                       console.log('CLEANUP SUMMARY');
+                      if (DRY_RUN) {
+                          console.log('(DRY RUN - NO ACTUAL DELETIONS PERFORMED)');
+                      }
                       console.log('='.repeat(60));
-                      console.log(`Docker Images:  Deleted ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
+                      const deletionVerb = DRY_RUN ? 'Would delete' : 'Deleted';
+                      console.log(`Docker Images:  ${deletionVerb} ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
                       if (CLEANUP_ATTESTATIONS) {
-                          console.log(`Attestations:   Cleaned up for ${deletedImageDigests.length} deleted image digests`);
+                          const cleanupVerb = DRY_RUN ? 'Would clean up' : 'Cleaned up';
+                          console.log(`Attestations:   ${cleanupVerb} for ${deletedImageDigests.length} deleted image digests`);
                       }
                       if (CLEANUP_CACHES) {
-                          console.log(`Caches:         Deleted ${deletedCaches} old caches`);
+                          console.log(`Caches:         ${deletionVerb} ${deletedCaches} old caches`);
                       }
                       console.log('='.repeat(60));
 
