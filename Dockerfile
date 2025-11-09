@@ -15,6 +15,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # hadolint ignore=DL3008,DL4001
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates wget unzip tar xz-utils curl jq && \
+    \
     NINJA_FILE="ninja-linux.zip" && \
     NINJA_API_RESPONSE=$(curl -sSL "https://api.github.com/repos/ninja-build/ninja/releases/tags/${NINJA_VERSION}") && \
     NINJA_DIGEST=$(echo "${NINJA_API_RESPONSE}" | jq -r ".assets[] | select(.name == \"${NINJA_FILE}\") | .digest") && \
@@ -33,6 +34,7 @@ RUN apt-get update && \
     echo "${NINJA_HASH}  ${NINJA_FILE}" | sha256sum --check && \
     unzip -q "${NINJA_FILE}" -d /usr/local/bin && \
     rm "${NINJA_FILE}" && \
+    \
     CMAKE_VERSION_NUM="${CMAKE_VERSION#v}" && \
     CMAKE_FILE="cmake-${CMAKE_VERSION_NUM}-linux-x86_64.tar.gz" && \
     CMAKE_API_RESPONSE=$(curl -sSL "https://api.github.com/repos/Kitware/CMake/releases/tags/${CMAKE_VERSION}") && \
@@ -53,6 +55,7 @@ RUN apt-get update && \
     mkdir -p /opt/cmake && \
     tar -xzf "${CMAKE_FILE}" -C /opt/cmake --strip-components=1 && \
     rm "${CMAKE_FILE}" && \
+    \
     ARM_NONE_EABI_FILE="arm-gnu-toolchain-${ARM_NONE_EABI_VERSION}-x86_64-arm-none-eabi.tar.xz" && \
     ARM_NONE_EABI_HASH_FILE="${ARM_NONE_EABI_FILE}.sha256asc" && \
     wget -q "https://developer.arm.com/-/media/Files/downloads/gnu/${ARM_NONE_EABI_VERSION}/binrel/${ARM_NONE_EABI_FILE}" && \
@@ -61,16 +64,10 @@ RUN apt-get update && \
     mkdir -p /opt/arm-none-eabi-gcc && \
     tar -xf "${ARM_NONE_EABI_FILE}" -C /opt/arm-none-eabi-gcc --strip-components=1 && \
     rm "${ARM_NONE_EABI_FILE}" "${ARM_NONE_EABI_HASH_FILE}" && \
-    ARCH="$(uname -m)" && \
-    case "$ARCH" in \
-        x86_64) COSIGN_ARCH="amd64" ;; \
-        aarch64) COSIGN_ARCH="arm64" ;; \
-        *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
-    esac && \
-    curl -sSfL "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-${COSIGN_ARCH}" \
-        -o /usr/local/bin/cosign && \
-    chmod +x /usr/local/bin/cosign && \
-    cosign version
+    \
+    COSIGN_FILE="cosign-linux-amd64" && \
+    wget -q "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/${COSIGN_FILE}" -O /usr/local/bin/cosign && \
+    chmod +x /usr/local/bin/cosign
 
 FROM debian:13-slim
 
