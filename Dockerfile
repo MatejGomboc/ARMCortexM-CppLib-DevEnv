@@ -3,6 +3,7 @@ FROM debian:13-slim AS downloader
 ARG NINJA_VERSION=v1.13.1
 ARG CMAKE_VERSION=v4.1.1
 ARG ARM_NONE_EABI_VERSION=14.3.rel1
+ARG COSIGN_VERSION=v3.0.2
 
 # hadolint ignore=DL3002
 USER root:root
@@ -14,6 +15,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # hadolint ignore=DL3008,DL4001
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates wget unzip tar xz-utils curl jq && \
+    \
     NINJA_FILE="ninja-linux.zip" && \
     NINJA_API_RESPONSE=$(curl -sSL "https://api.github.com/repos/ninja-build/ninja/releases/tags/${NINJA_VERSION}") && \
     NINJA_DIGEST=$(echo "${NINJA_API_RESPONSE}" | jq -r ".assets[] | select(.name == \"${NINJA_FILE}\") | .digest") && \
@@ -32,6 +34,7 @@ RUN apt-get update && \
     echo "${NINJA_HASH}  ${NINJA_FILE}" | sha256sum --check && \
     unzip -q "${NINJA_FILE}" -d /usr/local/bin && \
     rm "${NINJA_FILE}" && \
+    \
     CMAKE_VERSION_NUM="${CMAKE_VERSION#v}" && \
     CMAKE_FILE="cmake-${CMAKE_VERSION_NUM}-linux-x86_64.tar.gz" && \
     CMAKE_API_RESPONSE=$(curl -sSL "https://api.github.com/repos/Kitware/CMake/releases/tags/${CMAKE_VERSION}") && \
@@ -52,6 +55,7 @@ RUN apt-get update && \
     mkdir -p /opt/cmake && \
     tar -xzf "${CMAKE_FILE}" -C /opt/cmake --strip-components=1 && \
     rm "${CMAKE_FILE}" && \
+    \
     ARM_NONE_EABI_FILE="arm-gnu-toolchain-${ARM_NONE_EABI_VERSION}-x86_64-arm-none-eabi.tar.xz" && \
     ARM_NONE_EABI_HASH_FILE="${ARM_NONE_EABI_FILE}.sha256asc" && \
     wget -q "https://developer.arm.com/-/media/Files/downloads/gnu/${ARM_NONE_EABI_VERSION}/binrel/${ARM_NONE_EABI_FILE}" && \
@@ -59,7 +63,26 @@ RUN apt-get update && \
     sha256sum --check "${ARM_NONE_EABI_HASH_FILE}" && \
     mkdir -p /opt/arm-none-eabi-gcc && \
     tar -xf "${ARM_NONE_EABI_FILE}" -C /opt/arm-none-eabi-gcc --strip-components=1 && \
-    rm "${ARM_NONE_EABI_FILE}" "${ARM_NONE_EABI_HASH_FILE}"
+    rm "${ARM_NONE_EABI_FILE}" "${ARM_NONE_EABI_HASH_FILE}" && \
+    \
+    COSIGN_FILE="cosign-linux-amd64" && \
+    COSIGN_API_RESPONSE=$(curl -sSL "https://api.github.com/repos/sigstore/cosign/releases/tags/${COSIGN_VERSION}") && \
+    COSIGN_DIGEST=$(echo "${COSIGN_API_RESPONSE}" | jq -r ".assets[] | select(.name == \"${COSIGN_FILE}\") | .digest") && \
+    if [ -z "${COSIGN_DIGEST}" ] || [ "${COSIGN_DIGEST}" = "null" ]; then \
+        echo "ERROR: Failed to get Cosign digest from GitHub API"; \
+        echo "API Response: ${COSIGN_API_RESPONSE}"; \
+        exit 1; \
+    fi && \
+    if [[ ! "${COSIGN_DIGEST}" =~ ^sha256: ]]; then \
+        echo "ERROR: Unexpected Cosign digest format: ${COSIGN_DIGEST}"; \
+        echo "Expected format: sha256:HASH"; \
+        exit 1; \
+    fi && \
+    COSIGN_HASH=$(echo "${COSIGN_DIGEST}" | cut -d: -f2) && \
+    wget -q "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/${COSIGN_FILE}" && \
+    echo "${COSIGN_HASH}  ${COSIGN_FILE}" | sha256sum --check && \
+    mv "${COSIGN_FILE}" /usr/local/bin/cosign && \
+    chmod +x /usr/local/bin/cosign
 
 FROM debian:13-slim
 
@@ -78,6 +101,7 @@ WORKDIR /root
 ENV PATH="/opt/arm-none-eabi-gcc/bin:/opt/cmake/bin:${PATH}"
 
 COPY --from=downloader /usr/local/bin/ninja /usr/local/bin/
+COPY --from=downloader /usr/local/bin/cosign /usr/local/bin/
 COPY --from=downloader /opt/cmake/ /opt/cmake/
 COPY --from=downloader /opt/arm-none-eabi-gcc/ /opt/arm-none-eabi-gcc/
 
@@ -95,6 +119,7 @@ RUN apt-get update && \
     arm-none-eabi-gcc --version && \
     git --version && \
     filecheck --version && \
-    FileCheck --version
+    FileCheck --version && \
+    cosign version
 
 CMD ["/bin/bash"]
