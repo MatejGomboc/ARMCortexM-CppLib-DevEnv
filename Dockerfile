@@ -97,4 +97,22 @@ RUN apt-get update && \
     filecheck --version && \
     FileCheck --version
 
+# Install cosign for image signature verification
+# hadolint ignore=DL3008
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl; \
+    COSIGN_VERSION="v2.4.1"; \
+    ARCH="$(uname -m)"; \
+    case "$ARCH" in \
+        x86_64) COSIGN_ARCH="amd64" ;; \
+        aarch64) COSIGN_ARCH="arm64" ;; \
+        *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
+    esac; \
+    curl -sSfL "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-${COSIGN_ARCH}" \
+        -o /usr/local/bin/cosign; \
+    chmod +x /usr/local/bin/cosign; \
+    cosign version; \
+    rm -rf /var/lib/apt/lists/*
+
 CMD ["/bin/bash"]
