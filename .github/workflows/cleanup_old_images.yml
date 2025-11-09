@@ -51,17 +51,21 @@ jobs:
             attestations: write
             actions: write
         steps:
-            - name: Clean up old container images, attestations, and caches
+            - name: Checkout repository
+              uses: actions/checkout@v4
+            
+            - name: Run cleanup script
               uses: actions/github-script@v8
+              env:
+                  INPUT_PACKAGE_NAME: ${{ inputs.package_name }}
+                  INPUT_USERNAME: ${{ inputs.username }}
+                  INPUT_BUNDLE_SIZE: ${{ inputs.bundle_size }}
+                  INPUT_KEEP_SEMANTIC_TAGGED: ${{ inputs.keep_semantic_tagged }}
+                  INPUT_CLEANUP_ATTESTATIONS: ${{ inputs.cleanup_attestations }}
+                  INPUT_CLEANUP_CACHES: ${{ inputs.cleanup_caches }}
+                  INPUT_CACHE_RETENTION_DAYS: ${{ inputs.cache_retention_days }}
+                  INPUT_DRY_RUN: ${{ inputs.dry_run }}
               with:
-                script: |
-                  const pkg='${{inputs.package_name}}'.toLowerCase(),usr='${{inputs.username}}'.toLowerCase(),BS=${{inputs.bundle_size}},KEEP=${{inputs.keep_semantic_tagged}},ATT=${{inputs.cleanup_attestations}},CACHE=${{inputs.cleanup_caches}},DAYS=${{inputs.cache_retention_days}},DRY=${{inputs.dry_run}};
-                  console.log(`Pkg: ${pkg}, User: ${usr}\n`);
-                  try{let dB=0,dA=0,dC=0,tS=0;const dDig=[];if(DRY)console.log('🔍 DRY RUN\n');console.log('PHASE 1: DOCKER IMAGES\n');let all=[],p=1,more=true;while(more){const v=await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({package_type:'container',package_name:pkg,username:usr,per_page:100,page:p});all=all.concat(v.data);more=v.data.length===100;console.log(`Pg ${p}: ${v.data.length} vers`);if(++p>10){console.log('Safety limit');break;}}
-                  all.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));console.log(`\n${all.length} versions`);if(!all.length)return;const SHA=t=>t.length>0&&t.every(x=>x.startsWith('sha256-')||x.startsWith('sha256:')),SEM=t=>t.some(x=>!x.startsWith('sha256-')&&!x.startsWith('sha256:'));console.log('Identifying bundles...');const buns=[],orph=new Set();for(let i=0;i<all.length;i++)orph.add(i);for(let i=0;i<all.length;i++){const v=all[i];if(SEM(v.metadata.container.tags)){const s=i-4;if(s>=0){const b={versions:all.slice(s,i+1),startIndex:s,complete:(i-s+1)===BS,isNewest:!buns.length};buns.push(b);for(let j=s;j<=i;j++)orph.delete(j);console.log(`Bundle ${s}-${i} (${b.complete?'OK':'BROKEN'})`);}}
-                  }console.log(`\n${buns.length} bundles, ${orph.size} orphaned`);if(orph.size>=BS){console.log('Checking deprecated...');const oi=Array.from(orph).sort((a,b)=>a-b);let dc=0;for(let i=0;i<=oi.length-BS;i++){let c=true;for(let j=0;j<BS-1;j++){if(oi[i+j+1]!==oi[i+j]+1){c=false;break;}}if(!c)continue;const pb={versions:[],startIndex:oi[i],complete:true,isNewest:false,deprecated:true};for(let j=0;j<BS;j++)pb.versions.push(all[oi[i+j]]);const p0=pb.versions[0],p4=pb.versions[4];if(!SHA(p0.metadata.container.tags))continue;let inv=false;for(let k=1;k<=3;k++){if(pb.versions[k].metadata.container.tags.length>0){inv=true;break;}}if(inv||SEM(p4.metadata.container.tags))continue;for(let j=0;j<BS;j++)orph.delete(oi[i+j]);buns.push(pb);dc++;console.log(`Deprecated ${oi[i]}-${oi[i+BS-1]}`);i+=BS-1;}if(dc>0)console.log(`${dc} deprecated`);}
-                  console.log('Validating...');for(let i=0;i<buns.length;i++){const b=buns[i];console.log(`\nB${i+1}: ${b.complete?'OK':'INC'} ${b.isNewest?'NEW':'OLD'} ${b.deprecated?'DEP':''}`);if(!b.complete){b.shouldDelete=true;continue;}const p0=b.versions[0],p4=b.versions[4];if(!SHA(p0.metadata.container.tags)){b.shouldDelete=true;continue;}let inv=false;for(let j=1;j<=3;j++){if(b.versions[j].metadata.container.tags.length>0)inv=true;}if(inv){b.shouldDelete=true;continue;}const t=p4.metadata.container.tags;if(b.deprecated||!SEM(t)){b.shouldDelete=true;}else if(!KEEP&&!b.isNewest){b.shouldDelete=true;}else{console.log(`Tags: ${t.filter(x=>!x.startsWith('sha256'))}`);b.shouldDelete=false;}}
-                  const toDel=buns.filter(b=>b.shouldDelete),depD=toDel.filter(b=>b.deprecated).length,incD=toDel.filter(b=>!b.complete).length,totD=toDel.reduce((s,b)=>s+b.versions.length,0)+orph.size;console.log(`\nDELETION: ${toDel.length} bundles (${depD} dep, ${incD} inc), ${orph.size} orph, Total: ${totD}\n`);if(toDel.length>0||orph.size>0){console.log('Deleting...\n');for(const b of toDel){const di=b.versions[4].name;if(di&&di.startsWith('sha256:'))dDig.push(di);for(const v of b.versions){console.log(`${DRY?'Would del':'Del'}: ${v.id}`);if(!DRY)await github.rest.packages.deletePackageVersionForUser({package_type:'container',package_name:pkg,username:usr,package_version_id:v.id});dA++;}dB++;}if(orph.size>0){console.log('Orphaned:');for(const i of orph){const v=all[i];console.log(`${DRY?'Would del':'Del'}: ${v.id}`);if(!DRY)await github.rest.packages.deletePackageVersionForUser({package_type:'container',package_name:pkg,username:usr,package_version_id:v.id});dA++;}}}
-                  console.log(`\n✅ ${dB} bundles + ${orph.size} orph (${dA} total), ${dDig.length} digests\n`);if(ATT&&dDig.length>0){console.log('PHASE 2: ATTESTATIONS\n');let da=0,ae=0;for(const d of dDig){try{if(!DRY)await github.request('DELETE /users/{username}/attestations/digest/{subject_digest}',{username:usr,subject_digest:d,headers:{'X-GitHub-Api-Version':'2022-11-28'}});da++;}catch(e){if(e.status!==404)ae++;}}console.log(`✅ ${da} attestations, ${ae} errors\n`);}
-                  if(CACHE){console.log('PHASE 3: CACHES\n');const cut=new Date();cut.setDate(cut.getDate()-DAYS);let ce=0;try{let cp=1,mc=true;while(mc){const cs=await github.rest.actions.getActionsCacheList({owner:context.repo.owner,repo:context.repo.repo,per_page:100,page:cp});for(const c of cs.data.actions_caches){if(new Date(c.created_at)<cut){try{if(!DRY)await github.rest.actions.deleteActionsCacheById({owner:context.repo.owner,repo:context.repo.repo,cache_id:c.id});dC++;tS+=c.size_in_bytes;}catch(e){ce++;}}}mc=cs.data.actions_caches.length===100;if(++cp>10)break;}console.log(`✅ ${dC} caches (${(tS/1024/1024).toFixed(2)} MB), ${ce} errors\n`);}catch(e){console.log(`Cache fail: ${e.message}\n`);}}
-                  console.log(`SUMMARY${DRY?' (DRY)':''}\nImages: ${dB} bundles (${dA} artifacts)`);if(ATT)console.log(`Attestations: ${dDig.length}`);if(CACHE)console.log(`Caches: ${dC}`);}catch(e){console.log(`\nFailed: ${e.message}\n${e.stack}`);core.setFailed(`Failed: ${e.message}`);}
+                  script: |
+                      const cleanupScript = require('./.github/scripts/cleanup-packages.js');
+                      await cleanupScript({ github, context, core });
