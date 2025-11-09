@@ -142,32 +142,20 @@ jobs:
 
                       console.log(`\nFetched ${allVersions.length} total versions`);
 
-                      // STRICT CHECK: Fetched versions must be divisible by bundle size.
-                      if (allVersions.length % BUNDLE_SIZE !== 0) {
-                          console.log(`\n❌ ERROR: Fetched versions (${allVersions.length}) is not divisible by ${BUNDLE_SIZE}!`);
-                          console.log('All bundles must be complete. Aborting cleanup.\n');
-                          console.log('Current versions in registry:');
-                          allVersions.forEach((v, idx) => {
-                              const tags = v.metadata.container.tags;
-                              const tagInfo = tags.length > 0 ? `[TAGGED: ${tags.join(', ')}]` : '[untagged]';
-                              console.log(`  ${idx + 1}. ID: ${v.id} | Created: ${v.created_at} | ${tagInfo}`);
-                          });
-                          core.setFailed('Cleanup aborted: incomplete bundles detected');
+                      if (allVersions.length === 0) {
+                          console.log('No versions found, nothing to clean up');
                           return;
                       }
 
-                      // Group into bundles.
-                      const bundles = [];
-                      for (let i = 0; i < allVersions.length; i += BUNDLE_SIZE) {
-                          bundles.push(allVersions.slice(i, i + BUNDLE_SIZE));
-                      }
-
-                      console.log(`Grouped into ${bundles.length} complete bundles of ${BUNDLE_SIZE}`);
-
-                      if (bundles.length === 0) {
-                          console.log('No bundles found, nothing to clean up');
-                          return;
-                      }
+                      // ============================================================
+                      // ROBUST BUNDLE IDENTIFICATION
+                      // ============================================================
+                      // Instead of requiring perfect divisibility, we:
+                      // 1. Find bundle boundaries using semantic tags (latest, v*.*.*)
+                      // 2. These tags are always at position 4 (oldest in bundle)
+                      // 3. Build bundles by collecting the 4 newer artifacts before each marker
+                      // 4. Clean up any incomplete/broken bundles
+                      // 5. Keep only complete, healthy bundles
 
                       // Helper function to check if tags contain only SHA256 digests.
                       const hasOnlySHATags = (tags) => {
@@ -179,111 +167,135 @@ jobs:
                           return tags.some(tag => !tag.startsWith('sha256-') && !tag.startsWith('sha256:'));
                       };
 
-                      // STRICT VALIDATION: Check EXACT structure of every bundle.
-                      for (let i = 0; i < bundles.length; i++) {
-                          const bundle = bundles[i];
-                          const isNewest = (i === 0);
+                      console.log('\nIdentifying bundles using semantic tag markers...');
 
-                          // Position 0 (newest in bundle): MUST have SHA256 tag ONLY.
-                          const pos0 = bundle[0];
-                          if (!hasOnlySHATags(pos0.metadata.container.tags)) {
-                              console.log(`\n❌ ERROR: Bundle ${i + 1} has invalid structure at position 0!`);
-                              console.log('Position 0 must have SHA256 tag only (attestation).\n');
-                              console.log(`Details of Bundle ${i + 1}:`);
-                              bundle.forEach((v, idx) => {
-                                  const tags = v.metadata.container.tags;
-                                  const tagInfo = tags.length > 0 ? `[TAGGED: ${tags.join(', ')}]` : '[untagged]';
-                                  console.log(`  Position ${idx}: ID ${v.id} | ${tagInfo}`);
-                              });
-                              core.setFailed('Cleanup aborted: bundle structure validation failed');
-                              return;
-                          }
-
-                          // Positions 1-3: MUST be untagged.
-                          for (let j = 1; j <= 3; j++) {
-                              const artifact = bundle[j];
-                              if (artifact.metadata.container.tags.length > 0) {
-                                  console.log(`\n❌ ERROR: Bundle ${i + 1} has invalid structure at position ${j}!`);
-                                  console.log(`Position ${j} must be untagged (artifact).\n`);
-                                  console.log(`Details of Bundle ${i + 1}:`);
-                                  bundle.forEach((v, idx) => {
-                                      const tags = v.metadata.container.tags;
-                                      const tagInfo = tags.length > 0 ? `[TAGGED: ${tags.join(', ')}]` : '[untagged]';
-                                      console.log(`  Position ${idx}: ID ${v.id} | ${tagInfo}`);
-                                  });
-                                  core.setFailed('Cleanup aborted: bundle structure validation failed');
-                                  return;
-                              }
-                          }
-
-                          // Position 4 (oldest in bundle): Docker image.
-                          const pos4 = bundle[4];
-                          if (isNewest) {
-                              // NEWEST bundle: Position 4 MUST have semantic tag (latest or 1.2.3).
-                              if (!hasSemanticTag(pos4.metadata.container.tags)) {
-                                  console.log(`\n❌ ERROR: Bundle ${i + 1} (newest) has invalid structure at position 4!`);
-                                  console.log('Position 4 must have semantic tag like "latest" or "1.2.3" (Docker image).\n');
-                                  console.log(`Details of Bundle ${i + 1}:`);
-                                  bundle.forEach((v, idx) => {
-                                      const tags = v.metadata.container.tags;
-                                      const tagInfo = tags.length > 0 ? `[TAGGED: ${tags.join(', ')}]` : '[untagged]';
-                                      console.log(`  Position ${idx}: ID ${v.id} | ${tagInfo}`);
-                                  });
-                                  core.setFailed('Cleanup aborted: newest bundle structure validation failed');
-                                  return;
-                              }
-                          } else {
-                              // OLDER bundles: Position 4 can be either:
-                              // - Untagged (superseded "latest" - will be deleted).
-                              // - Tagged with version (1.2.3 - will be kept if KEEP_SEMANTIC_TAGGED is true).
-                              // No validation needed - deletion logic handles this correctly.
+                      // Find all bundle markers (versions with semantic tags)
+                      const bundleMarkers = [];
+                      for (let i = 0; i < allVersions.length; i++) {
+                          const version = allVersions[i];
+                          if (hasSemanticTag(version.metadata.container.tags)) {
+                              bundleMarkers.push({ index: i, version: version });
                           }
                       }
 
-                      console.log('✅ All bundles have valid structure!\n');
+                      console.log(`Found ${bundleMarkers.length} bundle markers (semantic tags)`);
 
-                      // Log newest bundle info.
-                      const newestBundle = bundles[0];
-                      const newestDockerImage = newestBundle[4];
-                      const semanticTags = newestDockerImage.metadata.container.tags.filter(tag =>
-                          !tag.startsWith('sha256-') && !tag.startsWith('sha256:')
-                      );
-                      console.log(`✅ Newest bundle Docker image tagged as "${semanticTags.join(', ')}"\n`);
+                      // Build bundles around each marker
+                      const bundles = [];
+                      const orphanedVersions = new Set(allVersions.map((v, i) => i)); // Track all version indices
+
+                      for (const marker of bundleMarkers) {
+                          const markerIndex = marker.index;
+                          const bundle = {
+                              versions: [],
+                              markerIndex: markerIndex,
+                              isComplete: false,
+                              isNewest: false
+                          };
+
+                          // Bundle should contain:
+                          // - 4 artifacts before the marker (positions 0-3)
+                          // - The marker itself at position 4
+                          
+                          // Collect the 4 versions immediately before the marker
+                          const startIndex = markerIndex - (BUNDLE_SIZE - 1);
+                          
+                          if (startIndex >= 0) {
+                              // We have enough versions before the marker
+                              for (let i = startIndex; i <= markerIndex; i++) {
+                                  bundle.versions.push(allVersions[i]);
+                                  orphanedVersions.delete(i);
+                              }
+                              
+                              if (bundle.versions.length === BUNDLE_SIZE) {
+                                  bundle.isComplete = true;
+                              }
+                          } else {
+                              // Not enough versions before marker - incomplete bundle
+                              // Collect whatever we have
+                              for (let i = 0; i <= markerIndex; i++) {
+                                  bundle.versions.push(allVersions[i]);
+                                  orphanedVersions.delete(i);
+                              }
+                          }
+
+                          bundles.push(bundle);
+                      }
+
+                      // Mark the newest complete bundle
+                      for (const bundle of bundles) {
+                          if (bundle.isComplete) {
+                              bundle.isNewest = true;
+                              break; // Only the first complete bundle is newest
+                          }
+                      }
+
+                      console.log(`Built ${bundles.length} bundles from markers`);
+                      console.log(`Found ${orphanedVersions.size} orphaned versions (not part of any bundle)\n`);
+
+                      // ============================================================
+                      // VALIDATE AND PROCESS BUNDLES
+                      // ============================================================
 
                       for (let i = 0; i < bundles.length; i++) {
                           const bundle = bundles[i];
+                          const bundleNum = i + 1;
 
-                          // Position 4 is the Docker image.
-                          const dockerImage = bundle[4];
-                          const tags = dockerImage.metadata.container.tags;
+                          console.log(`\nBundle ${bundleNum}:`);
+                          console.log(`  Complete: ${bundle.isComplete}`);
+                          console.log(`  Newest: ${bundle.isNewest}`);
+                          console.log(`  Size: ${bundle.versions.length}/${BUNDLE_SIZE}`);
 
-                          // Determine if this bundle should be deleted.
+                          // Log bundle contents
+                          bundle.versions.forEach((v, idx) => {
+                              const tags = v.metadata.container.tags;
+                              const tagInfo = tags.length > 0 ? `[${tags.join(', ')}]` : '[untagged]';
+                              console.log(`    Position ${idx}: ${tagInfo}`);
+                          });
+
+                          // Determine if bundle should be deleted
                           let shouldDelete = false;
+                          let deleteReason = '';
 
-                          if (!hasSemanticTag(tags)) {
-                              // No semantic tag = superseded "latest" → DELETE entire bundle.
+                          if (!bundle.isComplete) {
+                              // Incomplete bundle - always delete
                               shouldDelete = true;
-                          } else if (!KEEP_SEMANTIC_TAGGED && i !== 0) {
-                              // If not keeping semantic tagged and not the newest bundle → DELETE.
-                              shouldDelete = true;
+                              deleteReason = 'incomplete bundle (broken/partial deployment)';
+                          } else {
+                              // Complete bundle - check semantic tag policy
+                              const dockerImage = bundle.versions[BUNDLE_SIZE - 1];
+                              const tags = dockerImage.metadata.container.tags;
+
+                              if (!hasSemanticTag(tags)) {
+                                  // No semantic tag = superseded "latest" → DELETE
+                                  shouldDelete = true;
+                                  deleteReason = 'superseded (no semantic tag)';
+                              } else if (!KEEP_SEMANTIC_TAGGED && !bundle.isNewest) {
+                                  // Has semantic tag but we're not keeping old versions → DELETE
+                                  shouldDelete = true;
+                                  deleteReason = 'old versioned release (keep_semantic_tagged=false)';
+                              } else {
+                                  // Keep this bundle
+                                  const semanticTags = tags.filter(tag => !tag.startsWith('sha256-') && !tag.startsWith('sha256:'));
+                                  console.log(`  → KEEPING (tagged: ${semanticTags.join(', ')})`);
+                              }
                           }
 
                           if (shouldDelete) {
-                              const tagInfo = hasOnlySHATags(tags) ? `only SHA tags: ${tags.join(', ')}` :
-                                              hasSemanticTag(tags) ? `semantic tags: ${tags.filter(t => !t.startsWith('sha256')).join(', ')}` :
-                                              'untagged';
-                              console.log(`Bundle ${i + 1}: Docker image ${tagInfo} → ${DRY_RUN ? 'WOULD DELETE' : 'DELETING'}`);
+                              console.log(`  → ${DRY_RUN ? 'WOULD DELETE' : 'DELETING'} (${deleteReason})`);
 
-                              // Collect the Docker image digest for attestation cleanup.
-                              const dockerImageDigest = dockerImage.name;
-                              if (dockerImageDigest && dockerImageDigest.startsWith('sha256:')) {
-                                  deletedImageDigests.push(dockerImageDigest);
-                                  console.log(`  Collected image digest for attestation cleanup: ${dockerImageDigest.substring(0, 20)}...`);
+                              // Collect Docker image digest for attestation cleanup (if it exists and has digest)
+                              if (bundle.versions.length === BUNDLE_SIZE) {
+                                  const dockerImage = bundle.versions[BUNDLE_SIZE - 1];
+                                  const dockerImageDigest = dockerImage.name;
+                                  if (dockerImageDigest && dockerImageDigest.startsWith('sha256:')) {
+                                      deletedImageDigests.push(dockerImageDigest);
+                                      console.log(`    Collected digest for attestation cleanup: ${dockerImageDigest.substring(0, 20)}...`);
+                                  }
                               }
 
-                              for (const version of bundle) {
-                                  console.log(`  - ${version.id} (${version.created_at})`);
-                                  
+                              // Delete all versions in the bundle
+                              for (const version of bundle.versions) {
                                   if (!DRY_RUN) {
                                       await github.rest.packages.deletePackageVersionForUser({
                                           package_type: 'container',
@@ -295,14 +307,36 @@ jobs:
                                   deletedArtifacts++;
                               }
                               deletedBundles++;
-                          } else {
-                              // Has semantic tag and we're keeping them → KEEP entire bundle.
-                              const semanticTags = tags.filter(tag => !tag.startsWith('sha256-') && !tag.startsWith('sha256:'));
-                              console.log(`Bundle ${i + 1}: Docker image tagged "${semanticTags.join(', ')}" → KEEPING`);
                           }
                       }
 
-                      console.log(`\n✅ ${DRY_RUN ? 'Would delete' : 'Deleted'} ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
+                      // ============================================================
+                      // HANDLE ORPHANED VERSIONS
+                      // ============================================================
+
+                      if (orphanedVersions.size > 0) {
+                          console.log(`\n⚠️  Found ${orphanedVersions.size} orphaned versions (not part of any bundle)`);
+                          console.log(`${DRY_RUN ? 'Would delete' : 'Deleting'} orphaned versions to clean up broken state:\n`);
+
+                          for (const idx of orphanedVersions) {
+                              const version = allVersions[idx];
+                              const tags = version.metadata.container.tags;
+                              const tagInfo = tags.length > 0 ? `[${tags.join(', ')}]` : '[untagged]';
+                              console.log(`  - Orphaned version: ${tagInfo} (created: ${version.created_at})`);
+
+                              if (!DRY_RUN) {
+                                  await github.rest.packages.deletePackageVersionForUser({
+                                      package_type: 'container',
+                                      package_name: packageName,
+                                      username: username,
+                                      package_version_id: version.id
+                                  });
+                              }
+                              deletedArtifacts++;
+                          }
+                      }
+
+                      console.log(`\n✅ ${DRY_RUN ? 'Would delete' : 'Deleted'} ${deletedBundles} bundles + ${orphanedVersions.size} orphaned (${deletedArtifacts} total artifacts)`);
                       console.log(`Collected ${deletedImageDigests.length} image digests for attestation cleanup\n`);
 
                       // ============================================================
@@ -446,7 +480,7 @@ jobs:
                           console.log('(DRY RUN - NO ACTUAL DELETIONS PERFORMED)');
                       }
                       console.log('='.repeat(60));
-                      console.log(`Docker Images:  ${DRY_RUN ? 'Would delete' : 'Deleted'} ${deletedBundles} bundles (${deletedArtifacts} artifacts)`);
+                      console.log(`Docker Images:  ${DRY_RUN ? 'Would delete' : 'Deleted'} ${deletedBundles} bundles + ${orphanedVersions.size} orphaned (${deletedArtifacts} total artifacts)`);
                       if (CLEANUP_ATTESTATIONS) {
                           console.log(`Attestations:   ${DRY_RUN ? 'Would clean up' : 'Cleaned up'} for ${deletedImageDigests.length} deleted image digests`);
                       }
