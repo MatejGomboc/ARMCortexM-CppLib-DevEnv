@@ -3,6 +3,7 @@ FROM debian:13-slim AS downloader
 ARG NINJA_VERSION=v1.13.1
 ARG CMAKE_VERSION=v4.1.1
 ARG ARM_NONE_EABI_VERSION=14.3.rel1
+ARG COSIGN_VERSION=v2.4.1
 
 # hadolint ignore=DL3002
 USER root:root
@@ -59,7 +60,17 @@ RUN apt-get update && \
     sha256sum --check "${ARM_NONE_EABI_HASH_FILE}" && \
     mkdir -p /opt/arm-none-eabi-gcc && \
     tar -xf "${ARM_NONE_EABI_FILE}" -C /opt/arm-none-eabi-gcc --strip-components=1 && \
-    rm "${ARM_NONE_EABI_FILE}" "${ARM_NONE_EABI_HASH_FILE}"
+    rm "${ARM_NONE_EABI_FILE}" "${ARM_NONE_EABI_HASH_FILE}" && \
+    ARCH="$(uname -m)" && \
+    case "$ARCH" in \
+        x86_64) COSIGN_ARCH="amd64" ;; \
+        aarch64) COSIGN_ARCH="arm64" ;; \
+        *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
+    esac && \
+    curl -sSfL "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-${COSIGN_ARCH}" \
+        -o /usr/local/bin/cosign && \
+    chmod +x /usr/local/bin/cosign && \
+    cosign version
 
 FROM debian:13-slim
 
@@ -78,6 +89,7 @@ WORKDIR /root
 ENV PATH="/opt/arm-none-eabi-gcc/bin:/opt/cmake/bin:${PATH}"
 
 COPY --from=downloader /usr/local/bin/ninja /usr/local/bin/
+COPY --from=downloader /usr/local/bin/cosign /usr/local/bin/
 COPY --from=downloader /opt/cmake/ /opt/cmake/
 COPY --from=downloader /opt/arm-none-eabi-gcc/ /opt/arm-none-eabi-gcc/
 
@@ -95,24 +107,7 @@ RUN apt-get update && \
     arm-none-eabi-gcc --version && \
     git --version && \
     filecheck --version && \
-    FileCheck --version
-
-# Install cosign for image signature verification
-# hadolint ignore=DL3008
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends curl; \
-    COSIGN_VERSION="v2.4.1"; \
-    ARCH="$(uname -m)"; \
-    case "$ARCH" in \
-        x86_64) COSIGN_ARCH="amd64" ;; \
-        aarch64) COSIGN_ARCH="arm64" ;; \
-        *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
-    esac; \
-    curl -sSfL "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-${COSIGN_ARCH}" \
-        -o /usr/local/bin/cosign; \
-    chmod +x /usr/local/bin/cosign; \
-    cosign version; \
-    rm -rf /var/lib/apt/lists/*
+    FileCheck --version && \
+    cosign version
 
 CMD ["/bin/bash"]
