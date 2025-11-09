@@ -154,8 +154,9 @@ jobs:
                       // 1. Find bundle boundaries using semantic tags (latest, v*.*.*)
                       // 2. These tags are always at position 4 (oldest in bundle)
                       // 3. Build bundles by collecting the 4 newer artifacts before each marker
-                      // 4. Clean up any incomplete/broken bundles
-                      // 5. Keep only complete, healthy bundles
+                      // 4. Look for deprecated bundles (superseded "latest" with no tags)
+                      // 5. Clean up any incomplete/broken bundles and true orphans
+                      // 6. Keep only complete, healthy bundles
 
                       // Helper function to check if tags contain only SHA256 digests.
                       const hasOnlySHATags = (tags) => {
@@ -190,7 +191,8 @@ jobs:
                               versions: [],
                               markerIndex: markerIndex,
                               isComplete: false,
-                              isNewest: false
+                              isNewest: false,
+                              isDeprecated: false
                           };
 
                           // Bundle should contain:
@@ -234,6 +236,77 @@ jobs:
                       console.log(`Found ${orphanedVersions.size} orphaned versions (not part of any bundle)\n`);
 
                       // ============================================================
+                      // IDENTIFY DEPRECATED BUNDLES (SUPERSEDED "LATEST")
+                      // ============================================================
+                      // Deprecated bundles are complete 5-version bundles that lost their
+                      // "latest" tag when superseded. They have no semantic tags but still
+                      // maintain the bundle structure. We identify them by:
+                      // 1. Looking for groups of exactly 5 consecutive orphaned versions
+                      // 2. Validating they have proper bundle structure
+                      // 3. Position 4 should have no semantic tag (lost "latest")
+
+                      if (orphanedVersions.size >= BUNDLE_SIZE) {
+                          console.log('Checking for deprecated bundles among orphaned versions...');
+                          
+                          // Convert to sorted array for easier scanning
+                          const orphanedIndices = Array.from(orphanedVersions).sort((a, b) => a - b);
+                          let deprecatedCount = 0;
+                          
+                          // Look for consecutive groups of exactly BUNDLE_SIZE versions
+                          for (let i = 0; i <= orphanedIndices.length - BUNDLE_SIZE; i++) {
+                              // Check if we have BUNDLE_SIZE consecutive indices
+                              let isConsecutive = true;
+                              for (let j = 0; j < BUNDLE_SIZE - 1; j++) {
+                                  if (orphanedIndices[i + j + 1] !== orphanedIndices[i + j] + 1) {
+                                      isConsecutive = false;
+                                      break;
+                                  }
+                              }
+                              
+                              if (isConsecutive) {
+                                  // Found a potential deprecated bundle
+                                  const potentialBundle = {
+                                      versions: [],
+                                      markerIndex: orphanedIndices[i + BUNDLE_SIZE - 1],
+                                      isComplete: true,
+                                      isNewest: false,
+                                      isDeprecated: true
+                                  };
+                                  
+                                  for (let j = 0; j < BUNDLE_SIZE; j++) {
+                                      const idx = orphanedIndices[i + j];
+                                      potentialBundle.versions.push(allVersions[idx]);
+                                  }
+                                  
+                                  // Validate bundle structure
+                                  const pos0 = potentialBundle.versions[0];
+                                  const pos4 = potentialBundle.versions[4];
+                                  
+                                  // Position 0 should have SHA256 tag only (attestation)
+                                  // Position 4 should have no semantic tag (superseded Docker image)
+                                  if (hasOnlySHATags(pos0.metadata.container.tags) && 
+                                      !hasSemanticTag(pos4.metadata.container.tags)) {
+                                      
+                                      // Valid deprecated bundle - remove from orphaned set
+                                      for (let j = 0; j < BUNDLE_SIZE; j++) {
+                                          orphanedVersions.delete(orphanedIndices[i + j]);
+                                      }
+                                      
+                                      bundles.push(potentialBundle);
+                                      deprecatedCount++;
+                                      console.log(`  Found deprecated bundle at indices ${orphanedIndices[i]}-${orphanedIndices[i + BUNDLE_SIZE - 1]}`);
+                                      
+                                      // Skip ahead since we've consumed these indices
+                                      i += BUNDLE_SIZE - 1;
+                                  }
+                              }
+                          }
+                          
+                          console.log(`Found ${deprecatedCount} deprecated bundles (superseded "latest")`);
+                          console.log(`Remaining orphaned versions: ${orphanedVersions.size}\n`);
+                      }
+
+                      // ============================================================
                       // VALIDATE AND PROCESS BUNDLES
                       // ============================================================
 
@@ -244,6 +317,7 @@ jobs:
                           console.log(`\nBundle ${bundleNum}:`);
                           console.log(`  Complete: ${bundle.isComplete}`);
                           console.log(`  Newest: ${bundle.isNewest}`);
+                          console.log(`  Deprecated: ${bundle.isDeprecated}`);
                           console.log(`  Size: ${bundle.versions.length}/${BUNDLE_SIZE}`);
 
                           // Log bundle contents
@@ -261,16 +335,16 @@ jobs:
                               // Incomplete bundle - always delete
                               shouldDelete = true;
                               deleteReason = 'incomplete bundle (broken/partial deployment)';
+                          } else if (bundle.isDeprecated) {
+                              // Deprecated bundle (superseded "latest") - always delete
+                              shouldDelete = true;
+                              deleteReason = 'deprecated (superseded "latest" - no semantic tag)';
                           } else {
-                              // Complete bundle - check semantic tag policy
+                              // Complete bundle with semantic tag - check retention policy
                               const dockerImage = bundle.versions[BUNDLE_SIZE - 1];
                               const tags = dockerImage.metadata.container.tags;
 
-                              if (!hasSemanticTag(tags)) {
-                                  // No semantic tag = superseded "latest" → DELETE
-                                  shouldDelete = true;
-                                  deleteReason = 'superseded (no semantic tag)';
-                              } else if (!KEEP_SEMANTIC_TAGGED && !bundle.isNewest) {
+                              if (!KEEP_SEMANTIC_TAGGED && !bundle.isNewest) {
                                   // Has semantic tag but we're not keeping old versions → DELETE
                                   shouldDelete = true;
                                   deleteReason = 'old versioned release (keep_semantic_tagged=false)';
@@ -311,11 +385,11 @@ jobs:
                       }
 
                       // ============================================================
-                      // HANDLE ORPHANED VERSIONS
+                      // HANDLE TRUE ORPHANED VERSIONS
                       // ============================================================
 
                       if (orphanedVersions.size > 0) {
-                          console.log(`\n⚠️  Found ${orphanedVersions.size} orphaned versions (not part of any bundle)`);
+                          console.log(`\n⚠️  Found ${orphanedVersions.size} truly orphaned versions (broken artifacts)`);
                           console.log(`${DRY_RUN ? 'Would delete' : 'Deleting'} orphaned versions to clean up broken state:\n`);
 
                           for (const idx of orphanedVersions) {
@@ -336,7 +410,8 @@ jobs:
                           }
                       }
 
-                      console.log(`\n✅ ${DRY_RUN ? 'Would delete' : 'Deleted'} ${deletedBundles} bundles + ${orphanedVersions.size} orphaned (${deletedArtifacts} total artifacts)`);
+                      const deprecatedBundleCount = bundles.filter(b => b.isDeprecated && b.isComplete).length;
+                      console.log(`\n✅ ${DRY_RUN ? 'Would delete' : 'Deleted'} ${deletedBundles} bundles (including ${deprecatedBundleCount} deprecated) + ${orphanedVersions.size} orphaned (${deletedArtifacts} total artifacts)`);
                       console.log(`Collected ${deletedImageDigests.length} image digests for attestation cleanup\n`);
 
                       // ============================================================
@@ -480,7 +555,10 @@ jobs:
                           console.log('(DRY RUN - NO ACTUAL DELETIONS PERFORMED)');
                       }
                       console.log('='.repeat(60));
-                      console.log(`Docker Images:  ${DRY_RUN ? 'Would delete' : 'Deleted'} ${deletedBundles} bundles + ${orphanedVersions.size} orphaned (${deletedArtifacts} total artifacts)`);
+                      
+                      const deprecatedCount = bundles.filter(b => b.isDeprecated && b.isComplete).length;
+                      console.log(`Docker Images:  ${DRY_RUN ? 'Would delete' : 'Deleted'} ${deletedBundles} bundles (${deprecatedCount} deprecated) + ${orphanedVersions.size} orphaned (${deletedArtifacts} total artifacts)`);
+                      
                       if (CLEANUP_ATTESTATIONS) {
                           console.log(`Attestations:   ${DRY_RUN ? 'Would clean up' : 'Cleaned up'} for ${deletedImageDigests.length} deleted image digests`);
                       }
