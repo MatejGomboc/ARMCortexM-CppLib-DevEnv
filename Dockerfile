@@ -66,7 +66,22 @@ RUN apt-get update && \
     rm "${ARM_NONE_EABI_FILE}" "${ARM_NONE_EABI_HASH_FILE}" && \
     \
     COSIGN_FILE="cosign-linux-amd64" && \
-    wget -q "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/${COSIGN_FILE}" -O /usr/local/bin/cosign && \
+    COSIGN_API_RESPONSE=$(curl -sSL "https://api.github.com/repos/sigstore/cosign/releases/tags/${COSIGN_VERSION}") && \
+    COSIGN_DIGEST=$(echo "${COSIGN_API_RESPONSE}" | jq -r ".assets[] | select(.name == \"${COSIGN_FILE}\") | .digest") && \
+    if [ -z "${COSIGN_DIGEST}" ] || [ "${COSIGN_DIGEST}" = "null" ]; then \
+        echo "ERROR: Failed to get Cosign digest from GitHub API"; \
+        echo "API Response: ${COSIGN_API_RESPONSE}"; \
+        exit 1; \
+    fi && \
+    if [[ ! "${COSIGN_DIGEST}" =~ ^sha256: ]]; then \
+        echo "ERROR: Unexpected Cosign digest format: ${COSIGN_DIGEST}"; \
+        echo "Expected format: sha256:HASH"; \
+        exit 1; \
+    fi && \
+    COSIGN_HASH=$(echo "${COSIGN_DIGEST}" | cut -d: -f2) && \
+    wget -q "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/${COSIGN_FILE}" && \
+    echo "${COSIGN_HASH}  ${COSIGN_FILE}" | sha256sum --check && \
+    mv "${COSIGN_FILE}" /usr/local/bin/cosign && \
     chmod +x /usr/local/bin/cosign
 
 FROM debian:13-slim
