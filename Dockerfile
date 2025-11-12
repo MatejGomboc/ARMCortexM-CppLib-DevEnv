@@ -82,7 +82,9 @@ RUN apt-get update && \
     wget -q "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/${COSIGN_FILE}" && \
     echo "${COSIGN_HASH}  ${COSIGN_FILE}" | sha256sum --check && \
     mv "${COSIGN_FILE}" /usr/local/bin/cosign && \
-    chmod +x /usr/local/bin/cosign
+    chmod +x /usr/local/bin/cosign && \
+    \
+    wget -q "https://dl.cloudsmith.io/public/task/task/setup.deb.sh"
 
 FROM debian:13-slim
 
@@ -104,13 +106,16 @@ COPY --from=downloader /usr/local/bin/ninja /usr/local/bin/
 COPY --from=downloader /usr/local/bin/cosign /usr/local/bin/
 COPY --from=downloader /opt/cmake/ /opt/cmake/
 COPY --from=downloader /opt/arm-none-eabi-gcc/ /opt/arm-none-eabi-gcc/
+COPY --from=downloader /root/setup.deb.sh /root/setup.deb.sh
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # hadolint ignore=DL3008
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates git llvm-19-tools && \
     apt-get upgrade -y && \
+    bash setup.deb.sh && \
+    apt-get install -y --no-install-recommends ca-certificates git llvm-19-tools task && \
+    rm setup.deb.sh && \
     rm -rf /var/lib/apt/lists/* && \
     ln -s /usr/bin/FileCheck-19 /usr/bin/FileCheck && \
     ln -s /usr/bin/FileCheck-19 /usr/bin/filecheck && \
