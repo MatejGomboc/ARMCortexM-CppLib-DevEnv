@@ -4,6 +4,7 @@ ARG NINJA_VERSION=v1.13.1
 ARG CMAKE_VERSION=v4.1.1
 ARG ARM_NONE_EABI_VERSION=14.3.rel1
 ARG COSIGN_VERSION=v3.0.2
+ARG TASK_VERSION=v3.45.5
 
 # hadolint ignore=DL3002
 USER root:root
@@ -82,7 +83,27 @@ RUN apt-get update && \
     wget -q "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/${COSIGN_FILE}" && \
     echo "${COSIGN_HASH}  ${COSIGN_FILE}" | sha256sum --check && \
     mv "${COSIGN_FILE}" /usr/local/bin/cosign && \
-    chmod +x /usr/local/bin/cosign
+    chmod +x /usr/local/bin/cosign && \
+    \
+    TASK_FILE="task_linux_amd64.tar.gz" && \
+    TASK_API_RESPONSE=$(curl -sSL "https://api.github.com/repos/go-task/task/releases/tags/${TASK_VERSION}") && \
+    TASK_DIGEST=$(echo "${TASK_API_RESPONSE}" | jq -r ".assets[] | select(.name == \"${TASK_FILE}\") | .digest") && \
+    if [ -z "${TASK_DIGEST}" ] || [ "${TASK_DIGEST}" = "null" ]; then \
+        echo "ERROR: Failed to get Task digest from GitHub API"; \
+        echo "API Response: ${TASK_API_RESPONSE}"; \
+        exit 1; \
+    fi && \
+    if [[ ! "${TASK_DIGEST}" =~ ^sha256: ]]; then \
+        echo "ERROR: Unexpected Task digest format: ${TASK_DIGEST}"; \
+        echo "Expected format: sha256:HASH"; \
+        exit 1; \
+    fi && \
+    TASK_HASH=$(echo "${TASK_DIGEST}" | cut -d: -f2) && \
+    wget -q "https://github.com/go-task/task/releases/download/${TASK_VERSION}/${TASK_FILE}" && \
+    echo "${TASK_HASH}  ${TASK_FILE}" | sha256sum --check && \
+    tar -xzf "${TASK_FILE}" -C /usr/local/bin task && \
+    rm "${TASK_FILE}" && \
+    chmod +x /usr/local/bin/task
 
 FROM debian:13-slim
 
@@ -102,6 +123,7 @@ ENV PATH="/opt/arm-none-eabi-gcc/bin:/opt/cmake/bin:${PATH}"
 
 COPY --from=downloader /usr/local/bin/ninja /usr/local/bin/
 COPY --from=downloader /usr/local/bin/cosign /usr/local/bin/
+COPY --from=downloader /usr/local/bin/task /usr/local/bin/
 COPY --from=downloader /opt/cmake/ /opt/cmake/
 COPY --from=downloader /opt/arm-none-eabi-gcc/ /opt/arm-none-eabi-gcc/
 
@@ -120,6 +142,7 @@ RUN apt-get update && \
     git --version && \
     filecheck --version && \
     FileCheck --version && \
-    cosign version
+    cosign version && \
+    task --version
 
 CMD ["/bin/bash"]
