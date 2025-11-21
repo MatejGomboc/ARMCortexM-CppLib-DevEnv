@@ -66,7 +66,7 @@ jobs:
             # Checkout the specific tag that triggered this workflow.
             # This ensures we build from the tagged commit, not main branch.
             - name: Checkout repository at tag
-              uses: actions/checkout@v5
+              uses: actions/checkout@v6
               with:
                 ref: ${{ github.ref }}
 
