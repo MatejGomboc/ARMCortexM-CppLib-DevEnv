@@ -52,7 +52,7 @@ jobs:
             actions: write
         steps:
             - name: Checkout repository
-              uses: actions/checkout@v5
+              uses: actions/checkout@v6
             
             - name: Run cleanup script
               uses: actions/github-script@v8
