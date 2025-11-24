@@ -51,6 +51,7 @@ Add to your `.devcontainer/devcontainer.json`:
   - Ninja Build
   - CMake
   - GIT
+  - Task
 
 - **ARM Toolchain**
   - complete arm-none-eabi-* suite
