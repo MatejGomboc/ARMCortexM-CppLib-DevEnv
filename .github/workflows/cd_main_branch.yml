@@ -3,6 +3,9 @@ name: Continuous Deployment Of Main Branch
 on:
     push:
         branches: [main] # Run only on main branch push event.
+        paths: # Only deploy when files that affect the Docker image change.
+            - 'Dockerfile'
+            - '.dockerignore'
     workflow_dispatch: # Manual trigger option.
     schedule:
         - cron: '0 0 * * 6' # Automatic trigger on every Saturday 00:00 AM UTC.
