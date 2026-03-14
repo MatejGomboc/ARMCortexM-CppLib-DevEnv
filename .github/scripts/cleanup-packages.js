@@ -406,17 +406,59 @@ module.exports = async ({ github, context, core }) => {
             console.log('PHASE 3: CLEANING UP CACHES');
             console.log('='.repeat(60));
             console.log('');
-            
+
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - CACHE_RETENTION_DAYS);
-            console.log(`Deleting caches older than ${CACHE_RETENTION_DAYS} days\n`);
-            
+            console.log(`Deleting caches older than ${CACHE_RETENTION_DAYS} days`);
+            console.log('Deleting caches from deleted/merged branches\n');
+
             let cacheErrors = 0;
+            let deletedExpired = 0;
+            let deletedOrphaned = 0;
 
             try {
+                // Build a set of active refs (branches + open PRs)
+                const activeRefs = new Set();
+
+                let branchPage = 1;
+                let hasMoreBranches = true;
+                while (hasMoreBranches) {
+                    const branches = await github.rest.repos.listBranches({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        per_page: 100,
+                        page: branchPage
+                    });
+                    for (const branch of branches.data) {
+                        activeRefs.add(`refs/heads/${branch.name}`);
+                    }
+                    hasMoreBranches = branches.data.length === 100;
+                    branchPage++;
+                }
+
+                let prPage = 1;
+                let hasMorePRs = true;
+                while (hasMorePRs) {
+                    const prs = await github.rest.pulls.list({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        state: 'open',
+                        per_page: 100,
+                        page: prPage
+                    });
+                    for (const pr of prs.data) {
+                        activeRefs.add(`refs/pull/${pr.number}/merge`);
+                        activeRefs.add(`refs/pull/${pr.number}/head`);
+                    }
+                    hasMorePRs = prs.data.length === 100;
+                    prPage++;
+                }
+
+                console.log(`Found ${activeRefs.size} active refs`);
+
                 let cachePage = 1;
                 let hasMoreCaches = true;
-                
+
                 while (hasMoreCaches) {
                     const caches = await github.rest.actions.getActionsCacheList({
                         owner: context.repo.owner,
@@ -424,16 +466,19 @@ module.exports = async ({ github, context, core }) => {
                         per_page: 100,
                         page: cachePage
                     });
-                    
+
                     console.log(`Page ${cachePage}: ${caches.data.actions_caches.length} caches`);
-                    
+
                     for (const cache of caches.data.actions_caches) {
                         const cacheDate = new Date(cache.created_at);
-                        
-                        if (cacheDate < cutoffDate) {
+                        const isExpired = cacheDate < cutoffDate;
+                        const isOrphaned = cache.ref && !activeRefs.has(cache.ref);
+
+                        if (isExpired || isOrphaned) {
+                            const reason = isOrphaned ? 'orphaned ref' : 'expired';
                             try {
-                                console.log(`  ${DRY_RUN ? 'Would delete' : 'Deleting'}: ${cache.key}`);
-                                
+                                console.log(`  ${DRY_RUN ? 'Would delete' : 'Deleting'} (${reason}): ${cache.key} [${cache.ref || 'no ref'}]`);
+
                                 if (!DRY_RUN) {
                                     await github.rest.actions.deleteActionsCacheById({
                                         owner: context.repo.owner,
@@ -441,27 +486,31 @@ module.exports = async ({ github, context, core }) => {
                                         cache_id: cache.id
                                     });
                                 }
-                                
+
                                 deletedCaches++;
                                 totalCacheSize += cache.size_in_bytes;
+                                if (isOrphaned) deletedOrphaned++;
+                                else deletedExpired++;
                             } catch (error) {
                                 console.log(`    ⚠️  Error: ${error.message}`);
                                 cacheErrors++;
                             }
                         }
                     }
-                    
+
                     hasMoreCaches = caches.data.actions_caches.length === 100;
                     cachePage++;
-                    
+
                     if (cachePage > 10) {
                         console.log('⚠️ Safety limit reached');
                         break;
                     }
                 }
-                
+
                 const sizeMB = (totalCacheSize / 1024 / 1024).toFixed(2);
                 console.log(`\n✅ ${deletedCaches} caches deleted (${sizeMB} MB freed)`);
+                if (deletedOrphaned > 0) console.log(`  - ${deletedOrphaned} from deleted/merged branches`);
+                if (deletedExpired > 0) console.log(`  - ${deletedExpired} expired (older than ${CACHE_RETENTION_DAYS} days)`);
                 if (cacheErrors > 0) console.log(`⚠️  ${cacheErrors} errors (non-fatal)`);
                 console.log('');
             } catch (error) {
