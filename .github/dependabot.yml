@@ -3,8 +3,10 @@ updates:
     - package-ecosystem: "github-actions"
       directory: "/"
       schedule:
-        interval: "daily"
+        interval: weekly
+        day: saturday
         time: "00:00"
+        timezone: "Europe/Ljubljana"
       labels:
         - "dependencies"
         - "github-actions"
@@ -15,8 +17,10 @@ updates:
     - package-ecosystem: "docker"
       directory: "/"
       schedule:
-        interval: "daily"
+        interval: weekly
+        day: saturday
         time: "00:00"
+        timezone: "Europe/Ljubljana"
       labels:
         - "dependencies"
         - "docker"
