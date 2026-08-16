@@ -2,7 +2,10 @@
 
 Development environment [for ARMCortexM-CppLib](https://github.com/MatejGomboc/ARMCortexM-CppLib)
 
-*NOTE: This project is in the process of being deprecated. Please, look at the Embedded Society's repo: <https://github.com/embedded-society/arm-dev-env>!*
+> [!IMPORTANT]
+> **This project is retired and the repository is archived.** Its role has been taken over by the
+> development-environment tooling of the
+> [Embedded Society organisation](https://github.com/embedded-society).
 
 ## 🐳 Docker Image
 
